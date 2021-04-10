@@ -25,7 +25,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    package_dir={"": "ltcl"},
     packages=setuptools.find_packages(),
     python_requires=">=3.7",
     install_requires = [
