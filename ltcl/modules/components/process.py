@@ -91,7 +91,7 @@ class MBDCell(nn.Module):
         hidden_size: int, 
         time_lags: int) -> None:
         """"Constructs MBDCell"""
-        super(MBDCell, self).__init__():
+        super(MBDCell, self).__init__()
         num_blocks = time_lags + 1
         self.dconv = GroupLinearLayer(din = output_size, 
                                       dout = hidden_size, 

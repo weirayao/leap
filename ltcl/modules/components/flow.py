@@ -4,6 +4,91 @@ import torch.nn.functional as F
 import torch.distributions as D
 import copy
 
+from typing import (Tuple,
+                    Optional)
+
+from ltcl.modules import components
+from ltcl import tools
+
+class GroupLinearLayer(nn.Module):
+    """GroupLinearLayer computes N dinstinct linear transformations at once"""
+    def __init__(
+        self, 
+        din: int, 
+        dout: int, 
+        num_blocks: int,
+        w: Optional[torch.Tensor] = None) -> None:
+        """Group Linear Layer module
+
+        Args:
+            din: The feature dimension of input data.
+            dout: The projected dimensions of data.
+            num_blocks: The number of linear transformation to compute at once.
+            w: The intialized weight vector (used for invertible function).
+        """
+        super(GroupLinearLayer, self).__init__()
+        if w is None:
+            self.w = nn.Parameter(0.01 * torch.randn(num_blocks, din, dout))
+
+    def forward(
+        self,
+        x: torch.Tensor) -> torch.Tensor:
+        # x: [BS,num_blocks,din]->[num_blocks,BS,din]
+        x = x.permute(1,0,2)
+        x = torch.bmm(x, self.w)
+        # x: [BS,num_blocks,dout]
+        x = x.permute(1,0,2)
+        return x
+
+def create_masks(input_size, hidden_size, n_hidden, input_order='sequential', input_degrees=None):
+    # MADE paper sec 4:
+    # degrees of connections between layers -- ensure at most in_degree - 1 connections
+    degrees = []
+
+    # set input degrees to what is provided in args (the flipped order of the previous layer in a stack of mades);
+    # else init input degrees based on strategy in input_order (sequential or random)
+    if input_order == 'sequential':
+        degrees += [torch.arange(input_size)] if input_degrees is None else [input_degrees]
+        for _ in range(n_hidden + 1):
+            degrees += [torch.arange(hidden_size) % (input_size - 1)]
+        degrees += [torch.arange(input_size) % input_size - 1] if input_degrees is None else [input_degrees % input_size - 1]
+
+    elif input_order == 'random':
+        degrees += [torch.randperm(input_size)] if input_degrees is None else [input_degrees]
+        for _ in range(n_hidden + 1):
+            min_prev_degree = min(degrees[-1].min().item(), input_size - 1)
+            degrees += [torch.randint(min_prev_degree, input_size, (hidden_size,))]
+        min_prev_degree = min(degrees[-1].min().item(), input_size - 1)
+        degrees += [torch.randint(min_prev_degree, input_size, (input_size,)) - 1] if input_degrees is None else [input_degrees - 1]
+
+    # construct masks
+    masks = []
+    for (d0, d1) in zip(degrees[:-1], degrees[1:]):
+        masks += [(d1.unsqueeze(-1) >= d0.unsqueeze(0)).float()]
+
+    return masks, degrees[0]
+
+class ComponentwiseFlow(nn.Module):
+    """MLP Flow for Generating Non-Gaussian Noise"""
+    def __init__(self, 
+                 input_size, 
+                 n_hidden: int = 1,
+                 negative_slope = 0.01):
+        super(ComponentwiseFlow, self).__init__()
+        # Construct forward model
+        modules = [GroupLinearLayer(input_size, 1, 1)]
+        for _ in range(n_hidden):
+            modules += [nn.LeakyReLU(negative_slope), GroupLinearLayer(input_size, 1, 1)]
+        modules += [nn.LeakyReLU(negative_slope), GroupLinearLayer(input_size, 1, 1)]
+        self.f_net = nn.Sequential(*modules)
+    
+    def forward(self, 
+                x: torch.Tensor) -> torch.Tensor:
+        """Density estimation transforming from data x to latent u"""
+        u = self.f_net(x)
+        log_abs_det_jacobian = 
+
+
 class LinearMaskedCoupling(nn.Module):
     """ Modified RealNVP Coupling Layers per the MAF paper """
     def __init__(self, input_size, hidden_size, n_hidden, mask, cond_label_size=None):
@@ -151,4 +236,11 @@ class RealNVP(nn.Module):
 
     def log_prob(self, x, y=None):
         z, sum_log_abs_det_jacobians = self.forward(x, y)
-        return torch.sum(self.base_dist.log_prob(z) + sum_log_abs_det_jacobians, dim=1)
+        logp = self.base_dist.log_prob(z) + sum_log_abs_det_jacobians
+        return torch.mean(torch.sum(logp, dim=1))
+
+    def sample(self, batch_size): 
+        z = self.base_dist.sample((batch_size, 1))
+        logp = self.base_dist.log_prob(z)
+        x, _ = self.inverse(z)
+        return x
