@@ -17,6 +17,34 @@ class InputOutsideDomain(Exception):
     pass
 
 
+class GroupLinearLayer(nn.Module):
+    """GroupLinearLayer computes N dinstinct linear transformations at once"""
+    def __init__(
+        self, 
+        din: int, 
+        dout: int, 
+        num_blocks: int) -> None:
+        """Group Linear Layer module
+
+        Args:
+            din: The feature dimension of input data.
+            dout: The projected dimensions of data.
+            num_blocks: The number of linear transformation to compute at once.
+        """
+        super(GroupLinearLayer, self).__init__()
+        self.w = nn.Parameter(0.01 * torch.randn(num_blocks, din, dout))
+        self.b = nn.Parameter(0.01 * torch.randn(num_blocks, dout))
+
+    def forward(
+        self,
+        x: torch.Tensor) -> torch.Tensor:
+        # x: [BS,num_blocks,din]->[num_blocks,BS,din]
+        x = x.permute(1,0,2)
+        x = torch.bmm(x, self.w)
+        # x: [BS,num_blocks,dout]
+        x = x.permute(1,0,2)
+        return x
+
 class Transform(nn.Module):
     """Base class for all transform objects."""
 

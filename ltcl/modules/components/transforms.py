@@ -1,28 +1,37 @@
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F, init
-import numpy as np
 from ltcl.modules import components
-from .splines import _monotonic_rational_spline
-from . import utils
+from ltcl.modules.components.splines import _monotonic_rational_spline
+from ltcl.modules.components.linear import LULinear
+
 from typing import (Tuple,
-                    Optional)
+                    Union,
+                    Optional,
+                    Any)
+from . import utils
+from .base import GroupLinearLayer
 
 # Invertible Component-wise Spline Transformation #
 class ComponentWiseSpline(components.Transform):
-    def __init__(self, 
-                 input_dim: int, 
-                 count_bins: int = 8, 
-                 bound: int = 3., 
-                 order: str = 'linear'):
+    def __init__(
+        self, 
+        input_dim: int, 
+        count_bins: int = 8, 
+        bound: int = 3., 
+        order: str = 'linear') -> None:
         """Component-wise Spline Flow
         Args:
             input_dim: The size of input/latent features.
-            count_bins: The number of bins that each can have their own slope.
+            count_bins: The number of bins that each can have their own weights.
             bound: Tail bound (outside tail bounds the transformation is identity)
             order: Spline order
+
+        Modified from Neural Spline Flows: https://arxiv.org/pdf/1906.04032.pdf
         """
         super(ComponentWiseSpline, self).__init__()
+        assert order in ("linear", "quadratic")
         self.input_dim = input_dim
         self.count_bins = count_bins
         self.bound = bound
@@ -31,23 +40,29 @@ class ComponentWiseSpline(components.Transform):
         self.unnormalized_heights = nn.Parameter(torch.randn(self.input_dim, self.count_bins))
         self.unnormalized_derivatives = nn.Parameter(torch.randn(self.input_dim, self.count_bins - 1))
         # Rational linear splines have additional lambda parameters
-        assert self.order in ("linear", "quadratic")
         if self.order == "linear":
             self.unnormalized_lambdas = nn.Parameter(torch.rand(self.input_dim, self.count_bins))
-            
-    def forward(self, x):
-        """x -> u"""
-        y, log_detJ = self.spline_op(x)
-        self._cache_log_detJ = log_detJ
-        return y, log_detJ
 
-    def inverse(self, y):
-        """u > x"""
-        x, log_detJ = self.spline_op(y, inverse=True)
+    def forward(
+        self, 
+        x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """f: data x -> latent u"""
+        u, log_detJ = self.spline_op(x)
+        self._cache_log_detJ = log_detJ
+        return u, log_detJ
+
+    def inverse(
+        self, 
+        u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """g: latent u > data x"""
+        x, log_detJ = self.spline_op(u, inverse=True)
         self._cache_log_detJ = -log_detJ
         return x, log_detJ
 
-    def spline_op(self, x, **kwargs):
+    def spline_op(
+        self, 
+        x: torch.Tensor, 
+        **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
         """Fit N separate splines for each dimension of input"""
         # widths, unnormalized_widths ~ (input_dim, num_bins)
         w = F.softmax(self.unnormalized_widths, dim=-1)
@@ -59,3 +74,123 @@ class ComponentWiseSpline(components.Transform):
             l = None
         y, log_detJ = _monotonic_rational_spline(x, w, h, d, l, bound=self.bound, **kwargs)
         return y, log_detJ
+
+# Multichannel Blind Deconvolution (MBD) to recover noise epsilon_t # 
+
+class AffineMBD(components.Transform):
+    """Multichannel Blind Deconvolution (MBD) to recover noise at once.
+                \epsilon_t = \sum_{p=0}^L W_l @ x_{t-k}
+    """
+    def __init__(
+        self,
+        input_size: int,
+        lags: int) -> None:
+        """Constructs MBD object
+
+        Args:
+            input_size: The number of latent causal factors.
+            lags: Past time lags to consider for MBD.
+            length: The length of input sequence including conditionals.
+        """
+        super(AffineMBD, self).__init__()
+        self.D = input_size
+        self.L = lags 
+        self.step_func = AffineMBDStep(self.D, self.L)
+
+    def forward(
+        self,
+        x: torch.Tensor):
+        """Recover noise vector at once"""
+        # x: [BS, T, D] -> [BS, T-L, L+1, D]
+        x = x.unfold(dimension = 1, size = self.L+1, step = 1)
+        shape = x.shape
+        x = x.reshape(-1, self.L+1, self.D)
+        xx, yy = x[:,-1:], x[:,:-1]
+        u, logabsdet = self.step_func(xx, yy)
+        # u: [BS, T-L, D]
+        u = u.reshape(shape[0], shape[1], self.D)
+        log_detJ = torch.sum(logabsdet.reshape(shape[0], shape[1]), dim=1)
+        return u, log_detJ
+    
+    def inverse(
+        self, 
+        u: torch.Tensor,
+        y: torch.Tensor):
+        """Generate observations/causal factors"""
+        # u: [BS, T-L, D]
+        shape = u.shape
+        x = [ ]
+        log_detJ = 0
+        for t in range(shape[1]):
+            uu = u[:,t,:]
+            xx, logabsdet = self.step.inverse(uu, y)
+            x.append(xx)
+            log_detJ += logabsdet
+            y = torch.cat((y[:,1:,:], xx), dim=1)
+        x = torch.cat(x, dim=1)
+        return x, log_detJ
+
+class AffineMBDStep(components.Transform):
+    """Multichannel Blind Deconvolution (MBD) to recover noise for one time step.
+                \epsilon_t = \sum_{p=0}^L W_l @ x_{t-k}
+    """
+    def __init__(
+        self,
+        input_size: int,
+        lags: int) -> None:
+        """Constructs MBD object
+
+        Args:
+            input_size: The number of latent causal factors.
+            lags: Past time lags to consider for MBD.
+        """
+        super(AffineMBDStep, self).__init__()
+        self.D = input_size
+        self.L = lags 
+        self.wt_func = GroupLinearLayer(din = self.D, 
+                                        dout = self.D, 
+                                        num_blocks = self.L)
+        self.w0_func = LULinear(features = self.D, 
+                                using_cache = True, 
+                                identity_init = True)
+    
+    def forward(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply MBD for one time step"""
+        # x: [BS, 1, D] y: [BS, time_lags, D] u: [BS, D]
+        ut = self.wt_func(y)
+        ut = torch.sum(ut, dim=1)
+        u0, logabsdet = self.w0_func(x[:,0,:])
+        u = ut + u0
+        return u, logabsdet
+    
+    def inverse(
+        self,
+        u: torch.Tensor,
+        y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """u0 = u - ut"""
+        # u: [BS, D] y: [BS, time_lags, D] x: [BS, 1, D]
+        ut = self.wt_func(y)
+        ut = torch.sum(ut, dim=1)
+        u0 = u - ut
+        x, logabsdet = self.w0_func.inverse(u0)
+        x = x.unsqueeze(1)
+        return x, logabsdet
+        
+        # x: [BS, 1, D] -> [BS, T-L+1, num_blocks, D]
+        # x = x.unfold(dimension = 1, size = self.num_blocks, step = 1)
+        # x = x.swapaxes(-1, -2)
+        # batch_shape = x.shape
+        # # Reshape to normal shapes because LULinear only works for this shape
+        # x = x.reshape(-1, self.D)
+        # epsilons = [ ]
+
+
+
+
+
+        
+
+
