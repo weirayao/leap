@@ -106,6 +106,7 @@ class AffineMBD(components.Transform):
         """Recover noise vector at once"""
         # x: [BS, T, D] -> [BS, T-L, L+1, D]
         x = x.unfold(dimension = 1, size = self.L+1, step = 1)
+        x = torch.swapaxes(x, 2, 3)
         shape = x.shape
         x = x.reshape(-1, self.L+1, self.D)
         xx, yy = x[:,-1:], x[:,:-1]

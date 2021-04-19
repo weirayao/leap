@@ -15,7 +15,7 @@ class TemporalMBDFlow(nn.Module):
                                      input_size = input_size, 
                                      hidden_size = 64, 
                                      n_hidden = 1, 
-                                     batch_norm=True)
+                                     batch_norm=False)
         self.dconv = AffineMBD(input_size = input_size, 
                                lags = lags)
         self.spline = ComponentWiseSpline(input_dim = input_size)
