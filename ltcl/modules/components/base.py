@@ -55,6 +55,23 @@ class Transform(nn.Module):
         raise InverseNotAvailable()
 
 
+class FlowSequential(nn.Sequential):
+    """ Container for layers of a normalizing flow """
+    def forward(self, x, y):
+        sum_log_abs_det_jacobians = 0
+        for module in self:
+            x, log_abs_det_jacobian = module(x, y)
+            sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + log_abs_det_jacobian
+        return x, sum_log_abs_det_jacobians
+
+    def inverse(self, u, y):
+        sum_log_abs_det_jacobians = 0
+        for module in reversed(self):
+            u, log_abs_det_jacobian = module.inverse(u, y)
+            sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + log_abs_det_jacobian
+        return u, sum_log_abs_det_jacobians
+
+        
 class CompositeTransform(Transform):
     """Composes several transforms into one, in the order they are given."""
 

@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F, init
@@ -11,7 +10,9 @@ from typing import (Tuple,
                     Optional,
                     Any)
 from . import utils
-from .base import GroupLinearLayer
+from .base import (GroupLinearLayer,
+                   FlowSequential)
+import copy
 
 # Invertible Component-wise Spline Transformation #
 class ComponentWiseSpline(components.Transform):
@@ -48,6 +49,7 @@ class ComponentWiseSpline(components.Transform):
         x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """f: data x -> latent u"""
         u, log_detJ = self.spline_op(x)
+        log_detJ = torch.sum(log_detJ, dim=1)
         self._cache_log_detJ = log_detJ
         return u, log_detJ
 
@@ -56,6 +58,7 @@ class ComponentWiseSpline(components.Transform):
         u: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """g: latent u > data x"""
         x, log_detJ = self.spline_op(u, inverse=True)
+        log_detJ = torch.sum(log_detJ, dim=1)
         self._cache_log_detJ = -log_detJ
         return x, log_detJ
 
@@ -107,7 +110,7 @@ class AffineMBD(components.Transform):
         x = x.reshape(-1, self.L+1, self.D)
         xx, yy = x[:,-1:], x[:,:-1]
         u, logabsdet = self.step_func(xx, yy)
-        # u: [BS, T-L, D]
+        # u: [BS, T-L, D], logabsdet: [BS*T-L]
         u = u.reshape(shape[0], shape[1], self.D)
         log_detJ = torch.sum(logabsdet.reshape(shape[0], shape[1]), dim=1)
         return u, log_detJ
@@ -117,13 +120,13 @@ class AffineMBD(components.Transform):
         u: torch.Tensor,
         y: torch.Tensor):
         """Generate observations/causal factors"""
-        # u: [BS, T-L, D]
+        # u: [BS, T-L, D], y: [BS, L, D]
         shape = u.shape
         x = [ ]
         log_detJ = 0
         for t in range(shape[1]):
             uu = u[:,t,:]
-            xx, logabsdet = self.step.inverse(uu, y)
+            xx, logabsdet = self.step_func.inverse(uu, y)
             x.append(xx)
             log_detJ += logabsdet
             y = torch.cat((y[:,1:,:], xx), dim=1)
@@ -178,19 +181,125 @@ class AffineMBDStep(components.Transform):
         x, logabsdet = self.w0_func.inverse(u0)
         x = x.unsqueeze(1)
         return x, logabsdet
-        
-        # x: [BS, 1, D] -> [BS, T-L+1, num_blocks, D]
-        # x = x.unfold(dimension = 1, size = self.num_blocks, step = 1)
-        # x = x.swapaxes(-1, -2)
-        # batch_shape = x.shape
-        # # Reshape to normal shapes because LULinear only works for this shape
-        # x = x.reshape(-1, self.D)
-        # epsilons = [ ]
+
+# Affline Coupling Transformation #
+
+class LinearMaskedCoupling(components.Transform):
+    """ Modified RealNVP Coupling Layers per the MAF paper """
+    def __init__(self, input_size, hidden_size, n_hidden, mask, cond_label_size=None):
+        super().__init__()
+
+        self.register_buffer('mask', mask)
+
+        # scale function
+        s_net = [nn.Linear(input_size + (cond_label_size if cond_label_size is not None else 0), hidden_size)]
+        for _ in range(n_hidden):
+            s_net += [nn.Tanh(), nn.Linear(hidden_size, hidden_size)]
+        s_net += [nn.Tanh(), nn.Linear(hidden_size, input_size)]
+        self.s_net = nn.Sequential(*s_net)
+
+        # translation function
+        self.t_net = copy.deepcopy(self.s_net)
+        # replace Tanh with ReLU's per MAF paper
+        for i in range(len(self.t_net)):
+            if not isinstance(self.t_net[i], nn.Linear): self.t_net[i] = nn.ReLU()
+
+    def forward(self, x, y=None):
+        # apply mask
+        mx = x * self.mask
+
+        # run through model
+        s = self.s_net(mx if y is None else torch.cat([y, mx], dim=1))
+        t = self.t_net(mx if y is None else torch.cat([y, mx], dim=1))
+        u = mx + (1 - self.mask) * (x - t) * torch.exp(-s)  # cf RealNVP eq 8 where u corresponds to x (here we're modeling u)
+
+        log_abs_det_jacobian = - (1 - self.mask) * s  # log det du/dx; cf RealNVP 8 and 6; note, sum over input_size done at model log_prob
+        log_abs_det_jacobian = torch.sum(log_abs_det_jacobian, dim=1)
+        return u, log_abs_det_jacobian
+
+    def inverse(self, u, y=None):
+        # apply mask
+        mu = u * self.mask
+
+        # run through model
+        s = self.s_net(mu if y is None else torch.cat([y, mu], dim=1))
+        t = self.t_net(mu if y is None else torch.cat([y, mu], dim=1))
+        x = mu + (1 - self.mask) * (u * s.exp() + t)  # cf RealNVP eq 7
+
+        log_abs_det_jacobian = (1 - self.mask) * s  # log det dx/du
+        log_abs_det_jacobian = torch.sum(log_abs_det_jacobian, dim=1)
+
+        return x, log_abs_det_jacobian
 
 
+class BatchNorm(components.Transform):
+    """ RealNVP BatchNorm layer """
+    def __init__(self, input_size, momentum=0.9, eps=1e-5):
+        super().__init__()
+        self.momentum = momentum
+        self.eps = eps
 
+        self.log_gamma = nn.Parameter(torch.zeros(input_size))
+        self.beta = nn.Parameter(torch.zeros(input_size))
 
+        self.register_buffer('running_mean', torch.zeros(input_size))
+        self.register_buffer('running_var', torch.ones(input_size))
 
-        
+    def forward(self, x, cond_y=None):
+        if self.training:
+            self.batch_mean = x.mean(0)
+            self.batch_var = x.var(0) # note MAF paper uses biased variance estimate; ie x.var(0, unbiased=False)
 
+            # update running mean
+            self.running_mean.mul_(self.momentum).add_(self.batch_mean.data * (1 - self.momentum))
+            self.running_var.mul_(self.momentum).add_(self.batch_var.data * (1 - self.momentum))
 
+            mean = self.batch_mean
+            var = self.batch_var
+        else:
+            mean = self.running_mean
+            var = self.running_var
+
+        # compute normalized input (cf original batch norm paper algo 1)
+        x_hat = (x - mean) / torch.sqrt(var + self.eps)
+        y = self.log_gamma.exp() * x_hat + self.beta
+
+        # compute log_abs_det_jacobian (cf RealNVP paper)
+        log_abs_det_jacobian = self.log_gamma - 0.5 * torch.log(var + self.eps)
+#        print('in sum log var {:6.3f} ; out sum log var {:6.3f}; sum log det {:8.3f}; mean log_gamma {:5.3f}; mean beta {:5.3f}'.format(
+#            (var + self.eps).log().sum().data.numpy(), y.var(0).log().sum().data.numpy(), log_abs_det_jacobian.mean(0).item(), self.log_gamma.mean(), self.beta.mean()))
+        return y, torch.sum(log_abs_det_jacobian.expand_as(x), dim=1)
+
+    def inverse(self, y, cond_y=None):
+        if self.training:
+            mean = self.batch_mean
+            var = self.batch_var
+        else:
+            mean = self.running_mean
+            var = self.running_var
+
+        x_hat = (y - self.beta) * torch.exp(-self.log_gamma)
+        x = x_hat * torch.sqrt(var + self.eps) + mean
+
+        log_abs_det_jacobian = 0.5 * torch.log(var + self.eps) - self.log_gamma
+
+        return x, torch.sum(log_abs_det_jacobian.expand_as(x), dim=1)
+
+class AfflineCoupling(components.Transform):
+    def __init__(self, n_blocks, input_size, hidden_size, n_hidden, cond_label_size=None, batch_norm=True):
+        super().__init__()
+        # construct model
+        modules = []
+        mask = torch.arange(input_size).float() % 2
+        for i in range(n_blocks):
+            modules += [LinearMaskedCoupling(input_size, hidden_size, n_hidden, mask, cond_label_size)]
+            mask = 1 - mask
+            modules += batch_norm * [BatchNorm(input_size)]
+
+        self.net = FlowSequential(*modules)
+
+    def forward(self, x, y=None):
+        return self.net(x, y)
+
+    def inverse(self, z, y=None):
+        return self.net.inverse(z, y)
