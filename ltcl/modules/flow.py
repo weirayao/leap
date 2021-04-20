@@ -7,15 +7,19 @@ from .components.transforms import (AfflineCoupling,
                                     ComponentWiseSpline)
 
 class TemporalMBDFlow(nn.Module):
-    def __init__(self, input_size=2, lags= 4):
+    def __init__(
+        self, 
+        input_size=2, 
+        lags= 4,
+        batch_norm=False):
         super().__init__()
         self.L = lags
         self.D = input_size
-        self.unmix = AfflineCoupling(n_blocks = 3, 
+        self.unmix = AfflineCoupling(n_blocks = 6, 
                                      input_size = input_size, 
-                                     hidden_size = 64, 
-                                     n_hidden = 1, 
-                                     batch_norm=False)
+                                     hidden_size = 32, 
+                                     n_hidden = 2, 
+                                     batch_norm=batch_norm)
         self.dconv = AffineMBD(input_size = input_size, 
                                lags = lags)
         self.spline = ComponentWiseSpline(input_dim = input_size)
@@ -80,6 +84,5 @@ class TemporalMBDFlow(nn.Module):
 
     def sample(self, y, batch_size, length=8): 
         z = self.base_dist.sample((batch_size, length))
-        # logp = self.base_dist.log_prob(z)
         x, _ = self.inverse(z, y)
         return x
