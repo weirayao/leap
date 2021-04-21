@@ -31,17 +31,21 @@ def main():
     batch_size = 128
     for chunk_idx in range(chunks):
         batch_data = [ ]
-        y = torch.rand(batch_size, lags, latent_size)
+        # Initialize past latents
+        y_l = torch.rand(batch_size, lags, latent_size) * 10
         for t in range(length):
-            x1 = torch.exp(torch.normal(0, 0.5, size=(batch_size, latent_size//2)))
-            x2 = torch.rand(batch_size, latent_size//2) - 0.5
-            x = torch.cat((x1, x2), dim=1)
+            # Sample current noise y_t = [y_1, y_2]
+            y_1 = torch.exp(torch.normal(0, 1, size=(batch_size, latent_size//2)))
+            y_2 = torch.rand(batch_size, latent_size//2) - 0.5
+            y_t = torch.cat((y_1, y_2), dim=1)
             for l in range(lags):
-                x += torch.mm(y[:,l,:], transitions[l])
-            x, _ = mixing_func.inverse(x)
-            npx = x.detach().cpu().numpy()
+                y_t += torch.mm(y_l[:,l,:], transitions[l])
+            x_t, _ = mixing_func.inverse(y_t)
+            npx = x_t.detach().cpu().numpy()
             batch_data.append(npx)
-            y = torch.cat((y[:,1:], x.unsqueeze(1)), dim=1)
+            # Update past latents
+            y_l = torch.cat((y_l[:,1:], y_t.unsqueeze(1)), dim=1)
+        # batch_data = [BS, length, input_size]
         batch_data = np.stack(batch_data, axis=1)
         np.savez("/home/cmu_wyao/projects/data/%d"%chunk_idx, 
                  y=batch_data[:,:lags], x=batch_data[:,lags:])
