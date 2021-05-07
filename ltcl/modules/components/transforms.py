@@ -88,7 +88,7 @@ class AffineMBD(components.Transform):
         self,
         input_size: int,
         lags: int,
-        diagonal: bool = False) -> None:
+        diagonal: bool) -> None:
         """Constructs MBD object
 
         Args:
