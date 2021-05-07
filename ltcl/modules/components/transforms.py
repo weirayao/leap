@@ -87,7 +87,8 @@ class AffineMBD(components.Transform):
     def __init__(
         self,
         input_size: int,
-        lags: int) -> None:
+        lags: int,
+        diagonal: bool = False) -> None:
         """Constructs MBD object
 
         Args:
@@ -98,7 +99,7 @@ class AffineMBD(components.Transform):
         super(AffineMBD, self).__init__()
         self.D = input_size
         self.L = lags 
-        self.step_func = AffineMBDStep(self.D, self.L)
+        self.step_func = AffineMBDStep(self.D, self.L, diagonal)
 
     def forward(
         self,
@@ -141,7 +142,8 @@ class AffineMBDStep(components.Transform):
     def __init__(
         self,
         input_size: int,
-        lags: int) -> None:
+        lags: int,
+        diagonal: bool) -> None:
         """Constructs MBD object
 
         Args:
@@ -153,10 +155,10 @@ class AffineMBDStep(components.Transform):
         self.L = lags 
         self.wt_func = GroupLinearLayer(din = self.D, 
                                         dout = self.D, 
-                                        num_blocks = self.L)
-        self.w0_func = LULinear(features = self.D, 
-                                using_cache = True, 
-                                identity_init = True)
+                                        num_blocks = self.L,
+                                        diagonal = diagonal)
+
+        self.b = nn.Parameter(0.01 * torch.randn(1, self.D))
     
     def forward(
         self,
@@ -165,8 +167,9 @@ class AffineMBDStep(components.Transform):
         """Apply MBD for one time step"""
         # x: [BS, 1, D] y: [BS, time_lags, D] u: [BS, D]
         ut = self.wt_func(y)
-        ut = torch.sum(ut, dim=1)
-        u0, logabsdet = self.w0_func(x[:,0,:])
+        ut = torch.sum(ut, dim=1) + self.b
+        # u0, logabsdet = self.w0_func(x[:,0,:])
+        u0, logabsdet = x[:,0,:], torch.zeros(x.shape[0]).cuda()
         u = ut + u0
         return u, logabsdet
     
@@ -179,7 +182,7 @@ class AffineMBDStep(components.Transform):
         ut = self.wt_func(y)
         ut = torch.sum(ut, dim=1)
         u0 = u - ut
-        x, logabsdet = self.w0_func.inverse(u0)
+        x, logabsdet = u0, torch.zeros(u.shape[0]).cuda()
         x = x.unsqueeze(1)
         return x, logabsdet
 

@@ -15,14 +15,17 @@ class TemporalMBDFlow(nn.Module):
         super().__init__()
         self.L = lags
         self.D = input_size
-        self.unmix = AfflineCoupling(n_blocks = 6, 
+        self.unmix = AfflineCoupling(n_blocks = 8, 
                                      input_size = input_size, 
-                                     hidden_size = 32, 
-                                     n_hidden = 2, 
+                                     hidden_size = 128, 
+                                     n_hidden = 3, 
                                      batch_norm=batch_norm)
         self.dconv = AffineMBD(input_size = input_size, 
                                lags = lags)
-        self.spline = ComponentWiseSpline(input_dim = input_size)
+        self.spline = ComponentWiseSpline(input_dim = input_size,
+                                          bound = 5,
+                                          count_bins = 8,
+                                          order = "linear")
         # base distribution for calculation of log prob under the model
         self.register_buffer('base_dist_mean', torch.zeros(input_size))
         self.register_buffer('base_dist_var', torch.eye(input_size))
@@ -80,9 +83,17 @@ class TemporalMBDFlow(nn.Module):
         e, z, sum_log_abs_det_jacobians = self.forward(x, y)
         logp = torch.sum(self.base_dist.log_prob(z), dim=1) + sum_log_abs_det_jacobians
         # TODO: density ratio trick to make e spatiotemporally independent
-        return torch.mean(logp)        
+        return torch.mean(logp), e        
 
     def sample(self, y, batch_size, length=8): 
         z = self.base_dist.sample((batch_size, length))
         x, _ = self.inverse(z, y)
         return x
+        
+    def sample_prior(self, batch_size):
+        z = self.base_dist.sample((batch_size, ))
+        z_shape = z.shape
+        zz = z.reshape(-1, self.D)
+        uu, _ = self.spline.inverse(zz)
+        u = uu.reshape(z_shape)
+        return u

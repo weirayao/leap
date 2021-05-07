@@ -23,17 +23,22 @@ class GroupLinearLayer(nn.Module):
         self, 
         din: int, 
         dout: int, 
-        num_blocks: int) -> None:
+        num_blocks: int,
+        diagonal: bool) -> None:
         """Group Linear Layer module
 
         Args:
             din: The feature dimension of input data.
             dout: The projected dimensions of data.
             num_blocks: The number of linear transformation to compute at once.
+            diagonal: Whether transition matrix is diagonal
         """
         super(GroupLinearLayer, self).__init__()
-        self.w = nn.Parameter(0.01 * torch.randn(num_blocks, din, dout))
-        self.b = nn.Parameter(0.01 * torch.randn(num_blocks, dout))
+        if diagonal:
+            self.d = nn.Parameter(0.01 * torch.randn(num_blocks, dout))
+            self.w = torch.diag_embed(self.d)
+        else:
+            self.w = nn.Parameter(0.01 * torch.randn(num_blocks, din, dout))
 
     def forward(
         self,
