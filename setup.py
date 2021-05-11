@@ -11,7 +11,7 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
 setup(
     name="ltcl", # Replace with your own username
     version="0.0.1",
-    author="Weiran Yao, Alex Ho, Kun Zhang",
+    author="Weiran Yao, Yuewen Sun, Alex Ho, Kun Zhang",
     author_email="ltcl@googlegroups.com",
     description="The ltcl is a tool for discovering latent temporal causal factors",
     long_description=long_description,
@@ -31,7 +31,8 @@ setup(
         "pytorch-lightning==1.2.7",
         "torch==1.8.1",
         "torchvision",
-        "torchaudio"
+        "torchaudio",
+        "disentanglement-lib==1.4"
     ],
     tests_require=[
         "pytest"
