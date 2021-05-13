@@ -5,7 +5,8 @@ import numpy as np
 import torch
 from torch import nn
 from . import utils
-
+from typing import (Tuple,
+                    Union)
 
 class InverseNotAvailable(Exception):
     """Exception to be thrown when a transform does not have an inverse."""
@@ -24,7 +25,8 @@ class GroupLinearLayer(nn.Module):
         din: int, 
         dout: int, 
         num_blocks: int,
-        diagonal: bool) -> None:
+        diagonal: bool = False,
+        hidden: Union[None, int] = None) -> None:
         """Group Linear Layer module
 
         Args:
@@ -34,21 +36,51 @@ class GroupLinearLayer(nn.Module):
             diagonal: Whether transition matrix is diagonal
         """
         super(GroupLinearLayer, self).__init__()
+        assert (hidden is None) or (type(hidden) == int)
+        self.hidden = hidden
+        self.diagonal = diagonal
+        # Sparse transition already implements low-rank
+        assert (bool(self.hidden) and self.diagonal) == False
         if diagonal:
             self.d = nn.Parameter(0.01 * torch.randn(num_blocks, dout))
-            self.w = torch.diag_embed(self.d)
         else:
-            self.w = nn.Parameter(0.01 * torch.randn(num_blocks, din, dout))
+            if hidden is None:
+                self.w = nn.Parameter(0.01 * torch.randn(num_blocks, din, dout))
+            else:
+                assert isinstance(hidden, int)
+                self.wh = nn.Parameter(0.01 * torch.randn(num_blocks, din, hidden))
+                self.hw = nn.Parameter(0.01 * torch.randn(num_blocks, hidden, dout))
 
     def forward(
         self,
         x: torch.Tensor) -> torch.Tensor:
-        # x: [BS,num_blocks,din]->[num_blocks,BS,din]
-        x = x.permute(1,0,2)
-        x = torch.bmm(x, self.w)
-        # x: [BS,num_blocks,dout]
-        x = x.permute(1,0,2)
+        if self.diagonal:
+            w = torch.diag_embed(self.d)
+            # x: [BS,num_blocks,din]->[num_blocks,BS,din]
+            x = x.permute(1,0,2)
+            x = torch.bmm(x, self.w)
+            # x: [BS,num_blocks,dout]
+            x = x.permute(1,0,2)
+        elif self.hidden is None:
+            x = x.permute(1,0,2)
+            x = torch.bmm(x, self.w)
+            # x: [BS,num_blocks,dout]
+            x = x.permute(1,0,2)
+        else:
+            x = x.permute(1,0,2)
+            # x: [num_blocks,BS,din]->[num_blocks,BS,hidden]
+            x = torch.bmm(x, self.wh)           
+            x = torch.bmm(x, self.hw)  
+            x = x.permute(1,0,2)
         return x
+    
+    def get_weight_matrix(self):
+        if self.diagonal:
+            return torch.diag_embed(self.d)
+        elif self.hidden is None:
+            return self.w 
+        else:
+            return torch.matmul(self.wh, self.hw)
 
 class Transform(nn.Module):
     """Base class for all transform objects."""

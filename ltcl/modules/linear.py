@@ -12,6 +12,7 @@ class AffineFlow(nn.Module):
         input_size = 2, 
         lags = 4,
         diagonal = False,
+        hidden = None,
         batch_norm = False):
         super().__init__()
         self.L = lags
@@ -21,9 +22,12 @@ class AffineFlow(nn.Module):
                                      hidden_size = 128, 
                                      n_hidden = 3, 
                                      batch_norm=batch_norm)
+
         self.dconv = AffineMBD(input_size = input_size, 
                                lags = lags,
-                               diagonal = diagonal)
+                               diagonal = diagonal,
+                               hidden = hidden)
+                               
         self.spline = ComponentWiseSpline(input_dim = input_size,
                                           bound = 5,
                                           count_bins = 8,

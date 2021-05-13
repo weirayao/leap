@@ -88,18 +88,20 @@ class AffineMBD(components.Transform):
         self,
         input_size: int,
         lags: int,
-        diagonal: bool) -> None:
+        diagonal: bool,
+        hidden = None) -> None:
         """Constructs MBD object
 
         Args:
             input_size: The number of latent causal factors.
             lags: Past time lags to consider for MBD.
-            length: The length of input sequence including conditionals.
+            diagonal: Constrain the transition to be diagonal.
+            hidden: Use hidden to constrain the rank of transition matrix.
         """
         super(AffineMBD, self).__init__()
         self.D = input_size
         self.L = lags 
-        self.step_func = AffineMBDStep(self.D, self.L, diagonal)
+        self.step_func = AffineMBDStep(self.D, self.D, self.L, diagonal, hidden)
 
     def forward(
         self,
@@ -141,9 +143,11 @@ class AffineMBDStep(components.Transform):
     """
     def __init__(
         self,
-        input_size: int,
+        din: int,
+        dout: int,
         lags: int,
-        diagonal: bool) -> None:
+        diagonal: bool,
+        hidden = None) -> None:
         """Constructs MBD object
 
         Args:
@@ -151,14 +155,13 @@ class AffineMBDStep(components.Transform):
             lags: Past time lags to consider for MBD.
         """
         super(AffineMBDStep, self).__init__()
-        self.D = input_size
-        self.L = lags 
-        self.wt_func = GroupLinearLayer(din = self.D, 
-                                        dout = self.D, 
+        self.L = lags
+        self.wt_func = GroupLinearLayer(din = din, 
+                                        dout = dout, 
                                         num_blocks = self.L,
-                                        diagonal = diagonal)
-
-        self.b = nn.Parameter(0.01 * torch.randn(1, self.D))
+                                        diagonal = diagonal,
+                                        hidden = hidden)
+        self.b = nn.Parameter(0.01 * torch.randn(1, dout))
     
     def forward(
         self,
@@ -169,7 +172,7 @@ class AffineMBDStep(components.Transform):
         ut = self.wt_func(y)
         ut = torch.sum(ut, dim=1) + self.b
         # u0, logabsdet = self.w0_func(x[:,0,:])
-        u0, logabsdet = x[:,0,:], torch.zeros(x.shape[0]).cuda()
+        u0, logabsdet = x[:,0,:], torch.zeros(x.shape[0]).to(ut.device)
         u = ut + u0
         return u, logabsdet
     
@@ -182,7 +185,7 @@ class AffineMBDStep(components.Transform):
         ut = self.wt_func(y)
         ut = torch.sum(ut, dim=1)
         u0 = u - ut
-        x, logabsdet = u0, torch.zeros(u.shape[0]).cuda()
+        x, logabsdet = u0, torch.zeros(u.shape[0]).to(u0.device)
         x = x.unsqueeze(1)
         return x, logabsdet
 
