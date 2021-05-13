@@ -69,8 +69,9 @@ class Dendrogram(pl.LightningModule):
         log_probs = self.flow.log_prob(second_sample, first_sample)
         l1_regularization = 0
         for param in self.flow.topdown_kernel.parameters():
-            l1_regularization = l1_regularization + torch.norm(param, 1)**2
+            l1_regularization = l1_regularization + torch.norm(param, 1)
         loss = -torch.mean(log_probs) + self.l1 * l1_regularization
+        self.log('l1_regularization_train', l1_regularization)
         self.log('train_loss', loss)
         return loss
 
@@ -80,7 +81,7 @@ class Dendrogram(pl.LightningModule):
         log_probs = self.flow.log_prob(second_sample, first_sample)
         l1_regularization = 0
         for param in self.flow.topdown_kernel.parameters():
-            l1_regularization = l1_regularization + torch.norm(param, 1)**2
+            l1_regularization = l1_regularization + torch.norm(param, 1)
         loss = -torch.mean(log_probs) + self.l1 * l1_regularization
         self.log('val_loss', loss)
         return loss
