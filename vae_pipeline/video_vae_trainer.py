@@ -22,10 +22,10 @@ def loss_func(et_mean, et_logvar, recon_xt_, xt_, mask_matrix):
 	batch_size = xt_.size(0)
 	recons_loss = F.mse_loss(recon_xt_, xt_, reduction='sum')
 	kld_loss = torch.mean(-0.5 * torch.sum(1 + et_logvar - et_mean ** 2 - et_logvar.exp(), dim = 1), dim = 0)
-	L1_loss = torch.mean(torch.abs(mask_matrix))
-	vae_loss = (recons_loss + kld_loss + L1_loss)/batch_size
+	l1_loss = torch.mean(torch.abs(mask_matrix))
+	vae_loss = (recons_loss + kld_loss + l1_loss)/batch_size
 
-	return vae_loss, recons_loss/batch_size, kld_loss/batch_size, L1_loss/batch_size
+	return vae_loss, recons_loss/batch_size, kld_loss/batch_size, l1_loss/batch_size
 
 ###### training model ######
 class Trainer(object):
