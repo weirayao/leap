@@ -12,10 +12,11 @@ from utils_vae import ConvUnit, ConvUnitTranspose, LinearUnit
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class TemporalVAE(nn.Module):
-	def __init__(self, e_dim=128, conv_dim=512, step=128, in_size=64, nonlinearity=None):
+	def __init__(self, e_dim=128, y_dim=128, conv_dim=512, step=128, in_size=64, nonlinearity=None):
 		super(TemporalVAE, self).__init__()
 		self.step = step
 		self.e_dim = e_dim
+		self.y_dim = y_dim
 		self.in_size = in_size
 		self.conv_dim = conv_dim
 		'''
@@ -31,6 +32,8 @@ class TemporalVAE(nn.Module):
 		self.final_conv_size = in_size // 8
 		self.conv_fc = nn.Sequential(LinearUnit(step * (self.final_conv_size ** 2), self.conv_dim * 2),
 				LinearUnit(self.conv_dim * 2, self.conv_dim))
+		self.lstm = nn.LSTM(self.conv_dim*2, self.e_dim, 1, bidirectional=True, batch_first=True)
+		self.rnn = nn.RNN(self.e_dim*2, self.e_dim, batch_first=True)
 
 		self.past_conv = nn.Sequential(
 				ConvUnit(3, step, 5, 1, 2),    
@@ -40,6 +43,9 @@ class TemporalVAE(nn.Module):
 				)
 		self.past_conv_fc = nn.Sequential(LinearUnit(step * (self.final_conv_size ** 2), self.conv_dim * 2),
 				LinearUnit(self.conv_dim * 2, self.conv_dim))
+
+		self.past_lstm = nn.LSTM(self.conv_dim, self.y_dim, 1, bidirectional=True, batch_first=True)
+		self.past_rnn = nn.RNN(self.y_dim*2, self.y_dim, batch_first=True)
 
 		self.deconv_fc = nn.Sequential(LinearUnit(self.e_dim, self.conv_dim * 2, False),
 				LinearUnit(self.conv_dim * 2, step * (self.final_conv_size ** 2), False))
@@ -51,8 +57,12 @@ class TemporalVAE(nn.Module):
 
 		self.y_mean = nn.Linear(self.e_dim, self.e_dim)
 		self.y_logvar = nn.Linear(self.e_dim, self.e_dim)
-		self.f1 = LinearUnit(self.conv_dim, self.e_dim, batchnorm=False)
-		self.f2 = LinearUnit(self.conv_dim, self.e_dim, batchnorm=False)
+
+		self.f1 = nn.Sequential(
+				nn.LSTM(self.y_dim, self.y_dim, 1, bidirectional=True, batch_first=True),
+				nn.RNN(self.y_dim*2, self.y_dim, batch_first=True)
+				)
+		self.f2 = LinearUnit(self.y_dim, self.y_dim, batchnorm=False)
 
 		for m in self.modules():
 			if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
@@ -61,21 +71,29 @@ class TemporalVAE(nn.Module):
 			elif isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Linear):
 				nn.init.kaiming_normal_(m.weight)
 
+	def encode_frames(self, xt):
+		xt = xt.view(-1, 3, self.in_size, self.in_size)
+		xt = self.conv(xt)
+		xt = xt.view(-1, self.step * (self.final_conv_size ** 2))
+		features = self.conv_fc(xt)
+		features = features.view(-1, self.conv_dim)	
+		return features
+
 	def encode(self, xt, xt_):
-		input_x = torch.cat((xt, xt_), dim=0)
-		input_x = input_x.view(-1, 3, self.in_size, self.in_size)
-		input_x = self.conv(input_x)
-		input_x = input_x.view(-1, self.step * (self.final_conv_size ** 2))
-		et = self.conv_fc(input_x)
-		et = et.view(-1, self.conv_dim)
+		features = self.encode_frames(xt)
+		features_ = self.encode_frames(xt_)
+		lstm_out, _ = self.lstm(torch.cat((features,features_), dim=1))
+		et, _ = self.rnn(lstm_out)			
 		return et
 
 	def past_encode(self, xt):
 		xt = xt.view(-1, 3, self.in_size, self.in_size)
 		xt = self.past_conv(xt)
 		xt = xt.view(-1, self.step * (self.final_conv_size ** 2))
-		yt = self.past_conv_fc(xt)
-		yt = yt.view(-1, self.conv_dim)
+		features = self.past_conv_fc(xt)
+		features = features.view(-1, self.conv_dim)
+		lstm_out, _ = self.past_lstm(features)
+		yt, _ = self.past_rnn(lstm_out)			
 		return yt
 
 	def decode(self, yt):
