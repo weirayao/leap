@@ -12,9 +12,10 @@ from utils_vae import LinearUnit
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class TemporalVAE(nn.Module):
-	def __init__(self, e_dim=2, input_dim=2, nonlinearity=None):
+	def __init__(self, e_dim=2, y_dim=2, input_dim=2, nonlinearity=None):
 		super(TemporalVAE, self).__init__()
 		self.e_dim = e_dim
+		self.y_dim = y_dim
 		self.input_dim = input_dim 
 		'''
 		please add your flow module
@@ -26,35 +27,49 @@ class TemporalVAE(nn.Module):
 								nn.Linear(8, e_dim),
 								nn.Tanh()
 								)
+		
+		self.lstm = nn.LSTM(self.e_dim, self.e_dim, 1, bidirectional=True, batch_first=True)
+		self.rnn = nn.RNN(self.e_dim*2, self.e_dim, batch_first=True)
 
 		self.past_enc = nn.Sequential(
-								nn.Linear(input_dim*2, 8),
+								nn.Linear(input_dim, 8),
 								nn.Tanh(),
-								nn.Linear(8, e_dim),
+								nn.Linear(8, y_dim),
 								nn.Tanh()
 								)
+		
+		self.past_lstm = nn.LSTM(self.y_dim, self.y_dim, 1, bidirectional=True, batch_first=True)
+		self.past_rnn = nn.RNN(self.y_dim*2, self.y_dim, batch_first=True)
 
 		self.dec = nn.Sequential(
-								nn.Linear(e_dim, 8),
+								nn.Linear(y_dim, 8),
 								nn.Tanh(),
 								nn.Linear(8, input_dim),
 								nn.Tanh()
 								)
 
-		self.y_mean = nn.Linear(self.e_dim, self.e_dim)
-		self.y_logvar = nn.Linear(self.e_dim, self.e_dim)
-		self.f1 = LinearUnit(self.e_dim, self.e_dim, batchnorm=False)
-		self.f2 = LinearUnit(self.e_dim, self.e_dim, batchnorm=False)
+		self.e_mean = nn.Linear(self.e_dim, self.e_dim)
+		self.e_logvar = nn.Linear(self.e_dim, self.e_dim)
+
+		self.f1 = nn.Sequential(
+				nn.LSTM(self.y_dim, self.y_dim, 1, bidirectional=True, batch_first=True),
+				nn.RNN(self.y_dim*2, self.y_dim, batch_first=True)
+				)
+		self.f2 = LinearUnit(self.y_dim, self.y_dim, batchnorm=False)
 
 	def encode(self, xt, xt_):
-		input_x = torch.cat((xt, xt_), dim=0)
+		input_x = torch.cat((xt, xt_), dim=1)
 		input_x = input_x.view(-1, self.input_dim)
-		et = self.enc(input_x)
+		features = self.enc(input_x)
+		lstm_out, _ = self.lstm(features)
+		et, _ = self.rnn(lstm_out)		
 		return et
 
 	def past_encode(self, xt):
 		xt = xt.view(-1, self.input_dim)
-		yt = self.past_enc(xt)
+		features = self.past_enc(xt)
+		lstm_out, _ = self.past_lstm(features)
+		yt, _ = self.past_rnn(lstm_out)		
 		return yt
 
 	def decode(self, yt):
@@ -72,8 +87,8 @@ class TemporalVAE(nn.Module):
 			return mean
 
 	def encode_y(self, et, yt):
-		mean = self.y_mean(et)
-		logvar = self.y_logvar(et)
+		mean = self.e_mean(et)
+		logvar = self.e_logvar(et)
 		et = self.reparameterize(mean, logvar, self.training)
 		'''
 		please add your flow module here
