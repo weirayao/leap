@@ -1,4 +1,0 @@
-'''
-y_t = f2(f1(y_(t-1)) + e_t), where f1 and f2 are sigmoid function, et ~ Gaussian distribution
-x_t = g(y_t), where g is sigmoid function
-'''
