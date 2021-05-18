@@ -16,9 +16,9 @@ from torch import nn
 from .munkres import Munkres
 
 
-# DIR = "post_nonlinear_data/f2_sigmoid/"  # in sigmoid case
-DIR = "post_nonlinear_data/f2_leaky_relu/"  # in leaky_relu case
-# DIR = "post_nonlinear_data/f2_self_defined/" # in self_defined case
+DIR = "dataset/post_nonlinear_Gaussian/" 
+# DIR = "dataset/post_nonlinear_nonGaussian/" 
+# DIR = "dataset/sparse_nonlinear/"
 
 class SimulationDataset(torch.utils.data.Dataset):
   def __init__(self, split: str = "train"):
