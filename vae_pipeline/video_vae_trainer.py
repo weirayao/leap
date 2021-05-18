@@ -30,7 +30,6 @@ def loss_func(et_mean, et_logvar, recon_xt_, xt_, mask_matrix):
 ###### training model ######
 class Trainer(object):
 	def __init__(self, model, train_dataloader, test_dataloader, learning_rate=1e-4, epochs=None, ckpoint='./ckpoint/vae_model.pth', recon_path='./recon/'):
-		self.e_dim = 2
 		self.epochs = epochs
 		self.epoch_loss = []
 		self.ckpoint = ckpoint
