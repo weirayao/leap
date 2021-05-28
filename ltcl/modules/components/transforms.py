@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.distributions as D
 from torch.nn import functional as F, init
 from ltcl.modules import components
 from ltcl.modules.components.splines import _monotonic_rational_spline
@@ -13,7 +14,7 @@ from . import utils
 from .base import (GroupLinearLayer,
                    FlowSequential)
 import copy
-
+import ipdb as pdb
 # Invertible Component-wise Spline Transformation #
 class ComponentWiseSpline(components.Transform):
     def __init__(
@@ -43,6 +44,13 @@ class ComponentWiseSpline(components.Transform):
         # Rational linear splines have additional lambda parameters
         if self.order == "linear":
             self.unnormalized_lambdas = nn.Parameter(torch.rand(self.input_dim, self.count_bins))
+        # base distribution for calculation of log prob under the model
+        self.register_buffer('base_dist_mean', torch.zeros(input_dim))
+        self.register_buffer('base_dist_var', torch.eye(input_dim))
+
+    @property
+    def base_dist(self):
+        return D.MultivariateNormal(self.base_dist_mean, self.base_dist_var)
 
     def forward(
         self, 
@@ -78,6 +86,11 @@ class ComponentWiseSpline(components.Transform):
         y, log_detJ = _monotonic_rational_spline(x, w, h, d, l, bound=self.bound, **kwargs)
         return y, log_detJ
 
+    def log_prob(self, x):
+        z, log_detJ = self.forward(x)
+        logp = self.base_dist.log_prob(z) + log_detJ
+        return logp
+        
 # Multichannel Blind Deconvolution (MBD) to recover noise epsilon_t # 
 
 class AffineMBD(components.Transform):

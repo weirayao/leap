@@ -38,10 +38,10 @@ class SimulationDataset(torch.utils.data.Dataset):
     datum = np.load(self.datum_names[datum_idx])
     # latent factor
     # yt = y_t        (batch_size, length, size)
-    # yt_ = y_(t+1)   (batch_size, length, size)
+    # yt_ = y_(t+1)   (batch_size, 1, size)
     # observed variable
     # xt = x_t        (batch_size, length, size)
-    # xt_ = x_(t+1)   (batch_size, length, size)
+    # xt_ = x_(t+1)   (batch_size, 1, size)
     sample = {"yt": torch.from_numpy(datum["yt"][sample_idx]),
               "yt_": torch.from_numpy(datum["yt_"][sample_idx]),
               "xt": torch.from_numpy(datum["xt"][sample_idx]),
@@ -113,7 +113,7 @@ def correlation(x, y, method='Pearson'):
      """
 
     # print("Calculating correlation...")
-
+    assert method in ["Pearson", "Spearman"]
     x = x.copy()
     y = y.copy()
     dim = x.shape[0]

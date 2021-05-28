@@ -2,6 +2,7 @@
 import numpy as np
 import torch
 import ltcl
+import tqdm
 from ltcl.baselines.GCL.mix import MixingMLP
 from ltcl.modules.components.transforms import AfflineCoupling
 
@@ -15,29 +16,30 @@ def main():
     transitions = [ ]
     scale = 2
     for l in range(lags):
-        B = (torch.rand(latent_size, latent_size) - 0.5)/scale
+        B = ((torch.rand(latent_size, latent_size) - 0.5)/scale).cuda()
         scale = scale * 2
         transitions.append(B)
     # transitions[0] is B_{-L}, transotions[-1] is B_0/1
     transitions.reverse()
 
-    mixing_func = AfflineCoupling(n_blocks = 2, 
+    mixing_func = AfflineCoupling(n_blocks = 10, 
                                   input_size = input_size, 
-                                  hidden_size = 2, 
-                                  n_hidden = 1, 
-                                  batch_norm = False)
+                                  hidden_size = 256, 
+                                  n_hidden = 8, 
+                                  batch_norm = False).cuda()
     length = 80 + lags # Use first lags elements as lags
     chunks = 1000
     batch_size = 128
-    for chunk_idx in range(chunks):
+    for chunk_idx in tqdm.tqdm(range(chunks)):
         batch_data = [ ]
         # Initialize past latents
-        y_l = torch.rand(batch_size, lags, latent_size) 
+        y_l = torch.rand(batch_size, lags, latent_size).cuda() 
         for t in range(length):
             # Sample current noise y_t = [y_1, y_2]
-            y_1 = torch.exp(torch.normal(0, 1, size=(batch_size, latent_size//2)))
+            y_1 = torch.exp(torch.normal(0, 1, size=(batch_size, latent_size//2))).cuda()
             # y_2 = torch.rand(batch_size, latent_size//2) - 0.5
-            y_2 = torch.distributions.laplace.Laplace(0,1).rsample((batch_size, latent_size//2))
+            y_2 = torch.distributions.uniform.Uniform(-0.5, 0.5).sample((batch_size, latent_size//2)).cuda() 
+            # y_2 = torch.distributions.laplace.Laplace(0,1).rsample((batch_size, latent_size//2)).cuda()
             y_t = torch.cat((y_1, y_2), dim=1)
             for l in range(lags):
                 y_t += torch.mm(y_l[:,l,:], transitions[l])

@@ -18,7 +18,7 @@ class KittiMasks(Dataset):
 	1: center of mass horizontal position
 	2: area
 	'''
-	def __init__(self, path='./data/kitti/', transform=None,
+	def __init__(self, path='./data/kitti/', transform = 'default',
 				 max_delta_t=5):
 		self.path = path
 		self.data = None
@@ -31,11 +31,10 @@ class KittiMasks(Dataset):
 
 		if transform == 'default':
 			self.transform = transforms.Compose(
-				[
-					transforms.ToPILImage(),
-					transforms.RandomAffine(degrees=(2., 2.), translate=(5 / 64., 5 / 64.)),
-					transforms.RandomHorizontalFlip(),
+				[	transforms.ToPILImage(),
+					transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
 					transforms.ToTensor(),
+					transforms.Lambda(lambda t: t + torch.rand_like(t) / 2**8),
 					lambda x: x.numpy()
 				])
 		else:
@@ -55,6 +54,8 @@ class KittiMasks(Dataset):
 
 		with open(file_path, 'rb') as data:
 			data = pickle.load(data)
+		print(data.keys())
+
 		self.data = data['pedestrians']
 		self.latents = data['pedestrians_latents']
 
@@ -99,13 +100,16 @@ class KittiMasks(Dataset):
 		latents2 = self.latents[sequence_ind][end_ind]  # center of mass vertical, com hor, area
 
 		if self.transform:
-			stack = np.concatenate([first_sample[:, :, None],
-									second_sample[:, :, None],
-									np.ones_like(second_sample[:, :, None]) * 255],  # add ones to treat like RGB image
-								   axis=2)
-			samples = self.transform(stack)  # do same transforms to start and ending
-			first_sample, second_sample = samples[0], samples[1]
-
+	
+			first_sample = self.transform(first_sample[:,:,None])
+			second_sample = self.transform(second_sample[:,:,None])
+			# stack = np.concatenate([first_sample[:, :, None],
+			# 						second_sample[:, :, None],
+			# 						np.ones_like(second_sample[:, :, None]) * 255],  # add ones to treat like RGB image
+			# 					   axis=2)
+			# first_sample = self.transform(first_sample)  # do same transforms to start and ending
+			# second_sample = self.transform(second_sample)  # do same transforms to start and ending
+			# first_sample, second_sample = samples[0], samples[1]
 		if len(first_sample.shape) == 2:  # set channel dim to 1
 			first_sample = first_sample[None]
 			second_sample = second_sample[None]
