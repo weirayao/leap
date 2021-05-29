@@ -25,8 +25,7 @@ def main(args):
 
     trainer = pl.Trainer(default_root_dir = "/home/cmu_wyao/checkpoints/linear_vae",
                          gpus=[2], 
-                         max_epochs=10,
-                         callbacks=[early_stop_callback])
+                         max_epochs=100)
 
     # Train the model
     trainer.fit(model, train_loader, val_loader)

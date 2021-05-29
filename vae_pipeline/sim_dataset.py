@@ -47,7 +47,7 @@ trans_func = nn.Sequential(
 	nonlinearity,
 	nn.Linear(latent_size, latent_size),
 	)
-	
+
 def leaky_ReLU_1d(d, negSlope):
 	if d > 0:
 		return d
@@ -72,6 +72,34 @@ plt.hist(z_np[:,0])
 plt.hist(z_np[:,1])
 '''
 def linear_nonGaussian():
+	batch_size = 1000000
+	path = os.path.join(root_dir, "linear_nongaussian")
+	os.makedirs(path, exist_ok=True)
+	transitions = [ ]
+	scale = 2
+	for l in range(lags):
+		B = ((torch.rand(latent_size, latent_size) - 0.5)/scale)
+		scale = scale * 2
+		transitions.append(B)
+	transitions.reverse()
+	y_l = torch.randn(batch_size, lags, latent_size)
+	x_l = mixing_func(y_l)
+	y_t = torch.distributions.laplace.Laplace(0,1).rsample((batch_size, latent_size))
+	for l in range(lags):
+		y_t += torch.mm(y_l[:,l,:], transitions[l])	
+	x_t = mixing_func(y_t)
+
+	np.savez(os.path.join(path, "data"), 
+			 yt = y_l.detach().cpu().numpy(), 
+			 yt_ = y_t.detach().cpu().numpy(), 
+			 xt = x_l.detach().cpu().numpy(), 
+			 xt_= x_t.detach().cpu().numpy())
+
+	for l in range(lags):
+		B = transitions[l].detach().cpu().numpy()
+		np.save(os.path.join(path, "W%d"%(lags-l)), B)
+
+def linear_nonGaussian_deprecated():
 	# Super-Gaussian is exp(Z) of standard normals
 	# Sub-Gaussian is Laplace distribution
 	path = os.path.join(root_dir, "linear_nongaussian")
