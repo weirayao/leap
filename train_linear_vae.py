@@ -35,19 +35,19 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument(
         '-beta',
-        default=0.1,
+        default=0.0025,
         type=float
     )
 
     argparser.add_argument(
         '-gamma',
-        default=0.1,
+        default=0.0075,
         type=float
     )
 
     argparser.add_argument(
         '-lr',
-        default=1e-3,
+        default=5e-4,
         type=float
     )
     args = argparser.parse_args()
