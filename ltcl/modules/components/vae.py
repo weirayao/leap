@@ -78,8 +78,8 @@ class LinearTemporalVAESynthetic(nn.Module):
                                           count_bins = 8,
                                           order = "linear")
         self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
-        for param in self.spline.parameters():
-            param.requires_grad = False
+        # for param in self.spline.parameters():
+        #     param.requires_grad = False
         self.e_mean = nn.Sequential(
                                      nn.Linear(y_dim, e_dim),
                                      nn.ReLU(negative_slope),

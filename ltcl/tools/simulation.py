@@ -1,18 +1,23 @@
 """Generate simulated data according to http://proceedings.mlr.press/v20/zhang11/zhang11.pdf"""
 import numpy as np
 import torch
+import torch.nn as nn
 import ltcl
 import tqdm
 from ltcl.baselines.GCL.mix import MixingMLP
 from ltcl.modules.components.transforms import AfflineCoupling
+
+def ortho_init_weights(m):
+    if type(m) == nn.Linear:
+        torch.nn.init.orthogonal_(m.weight)
 
 def main():
     input_size = 4
     # Super-Gaussian is exp(Z) of standard normals
     # Sub-Gaussian is Laplace distribution
     lags = 2
-    input_size = 4
-    latent_size = 4
+    input_size = 32
+    latent_size = 32
     transitions = [ ]
     scale = 2
     for l in range(lags):
@@ -22,10 +27,19 @@ def main():
     # transitions[0] is B_{-L}, transotions[-1] is B_0/1
     transitions.reverse()
 
-    mixing_func = AfflineCoupling(n_blocks = 10, 
-                                  input_size = input_size, 
-                                  hidden_size = 256, 
-                                  n_hidden = 8, 
+    # mixing_func = mixing_func = nn.Sequential(
+    #                                             nn.Linear(latent_size, latent_size, bias=False),
+    #                                             nn.LeakyReLU(0.95),
+    #                                             nn.Linear(latent_size, latent_size, bias=False),
+    #                                             nn.LeakyReLU(0.85),
+    #                                             nn.Linear(latent_size, input_size, bias=False),
+    #                                          ).cuda()
+    # mixing_func.apply(ortho_init_weights)
+
+    mixing_func = AfflineCoupling(n_blocks = 10,
+                                  input_size = input_size,
+                                  hidden_size = 256,
+                                  n_hidden = 8,
                                   batch_norm = False).cuda()
     length = 80 + lags # Use first lags elements as lags
     chunks = 1000
@@ -36,10 +50,11 @@ def main():
         y_l = torch.rand(batch_size, lags, latent_size).cuda() 
         for t in range(length):
             # Sample current noise y_t = [y_1, y_2]
-            y_1 = torch.exp(torch.normal(0, 1, size=(batch_size, latent_size//2))).cuda()
+            # y_1 = torch.exp(torch.normal(0, 1, size=(batch_size, latent_size//2))).cuda()
+            y_1 = torch.distributions.laplace.Laplace(0,0.1).rsample((batch_size, latent_size//2)).cuda()
             # y_2 = torch.rand(batch_size, latent_size//2) - 0.5
-            y_2 = torch.distributions.uniform.Uniform(-0.5, 0.5).sample((batch_size, latent_size//2)).cuda() 
-            # y_2 = torch.distributions.laplace.Laplace(0,1).rsample((batch_size, latent_size//2)).cuda()
+            # y_2 = torch.distributions.uniform.Uniform(-0.5, 0.5).sample((batch_size, latent_size//2)).cuda() 
+            y_2 = torch.distributions.laplace.Laplace(0,0.1).rsample((batch_size, latent_size//2)).cuda()
             y_t = torch.cat((y_1, y_2), dim=1)
             for l in range(lags):
                 y_t += torch.mm(y_l[:,l,:], transitions[l])
@@ -50,11 +65,11 @@ def main():
             y_l = torch.cat((y_l[:,1:], y_t.unsqueeze(1)), dim=1)
         # batch_data = [BS, length, input_size]
         batch_data = np.stack(batch_data, axis=1)
-        np.savez("/home/cmu_wyao/projects/data/%d"%chunk_idx, 
+        np.savez("/home/cmu_wyao/projects/data/flow/%d"%chunk_idx, 
                  y=batch_data[:,:lags], x=batch_data[:,lags:])
     for l in range(lags):
         B = transitions[l].detach().cpu().numpy()
-        np.save("/home/cmu_wyao/projects/data/W%d"%(lags-l), B)
+        np.save("/home/cmu_wyao/projects/data/flow/W%d"%(lags-l), B)
 
 if __name__ == "__main__":
     main()

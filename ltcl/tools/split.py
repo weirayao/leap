@@ -3,7 +3,7 @@ import glob
 import random
 VALIDATION_RATIO = 0.2
 
-DIR = "/home/cmu_wyao/projects/data/"
+DIR = "/home/cmu_wyao/projects/data/flow"
 if __name__ == "__main__":
     datum_names = glob.glob(os.path.join(DIR, "*.npz"))
     n_samples = len(datum_names)

@@ -17,10 +17,10 @@ class AffineFlow(nn.Module):
         super().__init__()
         self.L = lags
         self.D = input_size
-        self.unmix = AfflineCoupling(n_blocks = 10, 
+        self.unmix = AfflineCoupling(n_blocks = 64, 
                                      input_size = input_size, 
-                                     hidden_size = 256, 
-                                     n_hidden = 8, 
+                                     hidden_size = 64, 
+                                     n_hidden = 2, 
                                      batch_norm=batch_norm)
 
         self.dconv = AffineMBD(input_size = input_size, 

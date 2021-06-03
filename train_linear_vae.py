@@ -25,6 +25,7 @@ def main(args):
 
     trainer = pl.Trainer(default_root_dir = "/home/cmu_wyao/checkpoints/linear_vae",
                          gpus=[2], 
+                         val_check_interval = 0.1,
                          max_epochs=100)
 
     # Train the model
@@ -34,13 +35,13 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument(
         '-beta',
-        default=1.,
+        default=0.1,
         type=float
     )
 
     argparser.add_argument(
         '-gamma',
-        default=10,
+        default=0.1,
         type=float
     )
 

@@ -20,17 +20,15 @@ class SimulationDataset(Dataset):
 		self.data = { }
 		for key in ["yt", "xt", "yt_", "xt_"]:
 			self.data[key] = self.npz[key]
-		self.min = np.min(self.data["xt_"], axis=0).reshape(1, -1)
-		self.max = np.max(self.data["xt_"], axis=0).reshape(1, -1)
 
 	def __len__(self):
 		return len(self.data["yt"])
 
 	def __getitem__(self, idx):
-		yt = torch.from_numpy(self.data["yt"][idx])
-		xt = torch.from_numpy((self.data["xt"][idx]-self.min / (self.max-self.min)))
-		yt_ = torch.from_numpy(self.data["yt_"][idx]).unsqueeze(0)
-		xt_ = torch.from_numpy((np.expand_dims(self.data["xt_"][idx], axis=0)-self.min) / (self.max-self.min))
+		yt = torch.from_numpy(self.data["yt"][idx].astype('float32'))
+		xt = torch.from_numpy(self.data["xt"][idx].astype('float32'))
+		yt_ = torch.from_numpy(self.data["yt_"][idx].astype('float32')).unsqueeze(0)
+		xt_ = torch.from_numpy(np.expand_dims(self.data["xt_"][idx], axis=0).astype('float32'))
 
 		sample = {"yt": yt,
 				  "yt_": yt_,

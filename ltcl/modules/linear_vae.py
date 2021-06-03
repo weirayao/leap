@@ -38,7 +38,7 @@ class AfflineVAESynthetic(pl.LightningModule):
 		self.lr = lr
 	
 	def forward(self, batch):
-		return self.model(batch)
+		return self.vae(batch)
 	
 	def training_step(self, batch, batch_idx):
 		_, _, _, _, xt_, recon_xt_, p, q, e, _ = self.vae.forward(batch)

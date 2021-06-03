@@ -82,9 +82,6 @@ class AfflineVAESynthetic(pl.LightningModule):
                                           count_bins = 8,
                                           order = "linear")
         self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
-        for param in self.spline.parameters():
-            param.requires_grad = False
-
         self.lr = lr
         self.beta = beta
         self.gamma = gamma
@@ -104,7 +101,7 @@ class AfflineVAESynthetic(pl.LightningModule):
         xt, xt_ = batch["xt"], batch["xt_"]
         batch_size, _, _  = xt.shape
         x = torch.cat((xt, xt_), dim=1)
-        x = input_x.view(-1, self.input_dim)
+        x = x.view(-1, self.input_dim)
         return self.net(x)
 
     def compute_cross_ent_laplace(self, mean, logvar, rate_prior):
