@@ -9,18 +9,18 @@ x_t = g(y_t)
 """
 import os
 import glob
+import tqdm
 import torch
 import scipy
 import random
-import tqdm
 import numpy as np
 from torch import nn
+from collections import deque
 import matplotlib.pyplot as plt
 from sklearn import preprocessing
 from scipy.stats import ortho_group
 from sklearn.preprocessing import scale
 
-from collections import deque
 import ipdb as pdb
 VALIDATION_RATIO = 0.2
 standard_scaler = preprocessing.StandardScaler()
