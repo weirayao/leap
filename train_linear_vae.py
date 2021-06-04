@@ -1,17 +1,18 @@
 import torch
-from torch.utils.data import DataLoader, random_split
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from ltcl.datasets.sim_dataset import SimulationDatasetTwoSample, SimulationDataset
-from ltcl.modules.lvae import AfflineVAESynthetic
 import argparse
+import pytorch_lightning as pl
+from torch.utils.data import DataLoader, random_split
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+
+from ltcl.modules.lvae import AfflineVAESynthetic
+from ltcl.datasets.sim_dataset import SimulationDatasetTwoSample, SimulationDataset
 
 def main(args):
     data = SimulationDataset()
     num_validation_samples = 500
     train_data, val_data = random_split(data, [len(data)-num_validation_samples, num_validation_samples])
     train_loader = DataLoader(train_data, batch_size=128, shuffle=True, pin_memory=True)
-    val_loader   = DataLoader(val_data, batch_size=1280, shuffle=False, pin_memory=True)
+    val_loader = DataLoader(val_data, batch_size=1280, shuffle=False, pin_memory=True)
 
     # Callbacks
     early_stop_callback = EarlyStopping(
@@ -33,22 +34,8 @@ def main(args):
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
-    argparser.add_argument(
-        '-beta',
-        default=0.0025,
-        type=float
-    )
-
-    argparser.add_argument(
-        '-gamma',
-        default=0.0075,
-        type=float
-    )
-
-    argparser.add_argument(
-        '-lr',
-        default=5e-4,
-        type=float
-    )
+    argparser.add_argument('-beta', default=0.0025, type=float)
+    argparser.add_argument('-gamma', default=0.0075, type=float)
+    argparser.add_argument('-lr', default=5e-4, type=float)
     args = argparser.parse_args()
     main(args)
