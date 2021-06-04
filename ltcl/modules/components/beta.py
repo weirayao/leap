@@ -1,16 +1,15 @@
 """model.py"""
 
 import torch
+import ipdb as pdb
 import torch.nn as nn
 import torch.nn.init as init
 from torch.autograd import Variable
-import ipdb as pdb
 
 def reparametrize(mu, logvar):
     std = logvar.div(2).exp()
     eps = Variable(std.data.new(std.size()).normal_())
     return mu + std*eps
-
 
 class View(nn.Module):
     def __init__(self, size):
@@ -19,7 +18,6 @@ class View(nn.Module):
 
     def forward(self, tensor):
         return tensor.view(self.size)
-
 
 class BetaVAE_CNN(nn.Module):
     """Model proposed in original beta-VAE paper(Higgins et al, ICLR, 2017)."""
