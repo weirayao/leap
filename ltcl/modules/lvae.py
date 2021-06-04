@@ -1,17 +1,18 @@
 """Temporal VAE with gaussian margial and laplacian transition prior"""
 
 import torch
-import torch.nn as nn
-from torch.nn import functional as F
-import torch.distributions as D
-import pytorch_lightning as pl
 import numpy as np
+import ipdb as pdb
+import torch.nn as nn
+import pytorch_lightning as pl
+import torch.distributions as D
+from torch.nn import functional as F
+
 from .components.beta import BetaVAE_MLP
+from .metrics.correlation import compute_mcc
 from .components.base import GroupLinearLayer
 from .components.transforms import ComponentWiseSpline
-from .metrics.correlation import compute_mcc
 
-import ipdb as pdb
 
 def reconstruction_loss(x, x_recon, distribution):
     batch_size = x.size(0)
@@ -48,19 +49,18 @@ def compute_sparsity(mu, normed=True):
 
 class AfflineVAESynthetic(pl.LightningModule):
 
-
     def __init__(
         self, 
         input_dim,
         z_dim=10, 
-        lag = 1,
-        hidden_dim = 128,
-        beta = 1,
-        gamma = 10,
-        lr = 1e-4,
-        diagonal = False,
-        decoder_dist = 'gaussian',
-        rate_prior = 1):
+        lag=1,
+        hidden_dim=128,
+        beta=1,
+        gamma=10,
+        lr=1e-4,
+        diagonal=False,
+        decoder_dist='gaussian',
+        rate_prior=1):
         '''Import Beta-VAE as encoder/decoder'''
         super().__init__()
         self.z_dim = z_dim
@@ -70,24 +70,24 @@ class AfflineVAESynthetic(pl.LightningModule):
                                z_dim=z_dim, 
                                hidden_dim=hidden_dim)
 
-        self.trans_func = GroupLinearLayer(din = z_dim, 
-                                           dout = z_dim,
-                                           num_blocks = lag,
-                                           diagonal = diagonal)
+        self.trans_func = GroupLinearLayer(din=_dim, 
+                                           dout=z_dim,
+                                           num_blocks=lag,
+                                           diagonal=diagonal)
 
         self.b = nn.Parameter(0.01 * torch.randn(1, z_dim))
 
-        self.spline = ComponentWiseSpline(input_dim = z_dim,
-                                          bound = 5,
-                                          count_bins = 8,
-                                          order = "linear")
+        self.spline = ComponentWiseSpline(input_dim=z_dim,
+                                          bound=5,
+                                          count_bins=8,
+                                          order="linear")
         self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
         self.lr = lr
+        self.lag = lag
         self.beta = beta
         self.gamma = gamma
-        self.lag = lag
-        self.decoder_dist = decoder_dist
         self.rate_prior = rate_prior
+        self.decoder_dist = decoder_dist
 
         # base distribution for calculation of log prob under the model
         self.register_buffer('base_dist_mean', torch.zeros(self.z_dim))
@@ -119,6 +119,7 @@ class AfflineVAESynthetic(pl.LightningModule):
         x = torch.cat((xt, xt_), dim=1)
         x = x.view(-1, self.input_dim)
         x_recon, mu, logvar, z = self.net(x)
+        
         # Normal VAE loss: recon_loss + kld_loss
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
         mu = mu.view(batch_size, -1, self.z_dim)
@@ -127,14 +128,15 @@ class AfflineVAESynthetic(pl.LightningModule):
         mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
         logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
         zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        
         # Past KLD divergenve
         p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
         q1 = D.Normal(mut, torch.exp(logvart / 2))
         log_qz_normal = q1.log_prob(zt)
         log_pz_normal = p1.log_prob(zt)
         kld_normal = log_qz_normal - log_pz_normal
-
         kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        
         # Current KLD divergence
         ut = self.trans_func(zt)
         ut = torch.sum(ut, dim=1) + self.b
@@ -142,11 +144,10 @@ class AfflineVAESynthetic(pl.LightningModule):
         et_, logabsdet = self.spline(epst_)
         log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
         q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
-
         log_qz_laplace = q_laplace.log_prob(zt_)
-
         kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
         kld_laplace = kld_laplace.mean()       
+        
         # normal_entropy = compute_ent_normal(logvar)
         # cross_ent_normal = compute_cross_ent_normal(mu, logvar)
         # kld_normal = torch.mean(torch.sum(cross_ent_normal - normal_entropy, dim=1), dim=0)
@@ -165,19 +166,16 @@ class AfflineVAESynthetic(pl.LightningModule):
         # logvar0 = 
         # rate_prior0 = self.rate_prior
         # rate_prior1 = self.rate_prior
-
         # # mu0 = self.trans_func(mu0)
         # # mu0 = torch.sum(mu0, dim=1) + self.b
         # # var0 = torch.exp(log_var0)
         # eps_t = mut_.squeeze() - ut
         # z, logabsdet = self.spline(eps_t)
-
         # kld_laplace = -1 * torch.mean(self.base_dist.log_prob(z) + logabsdet)
         loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace  
 
-
         self.log("train_elbo_loss", loss)
-        self.log("train_recon_loss", (self.lag+1) * recon_loss)
+        self.log("train_recon_loss", recon_loss)
         self.log("train_kld_normal", kld_normal)
         self.log("train_kld_laplace", kld_laplace)
 
@@ -189,6 +187,7 @@ class AfflineVAESynthetic(pl.LightningModule):
         x = torch.cat((xt, xt_), dim=1)
         x = x.view(-1, self.input_dim)
         x_recon, mu, logvar, z = self.net(x)
+        
         # Normal VAE loss: recon_loss + kld_loss
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
         mu = mu.view(batch_size, -1, self.z_dim)
@@ -197,14 +196,15 @@ class AfflineVAESynthetic(pl.LightningModule):
         mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
         logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
         zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        
         # Past KLD divergenve
         p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
         q1 = D.Normal(mut, torch.exp(logvart / 2))
         log_qz_normal = q1.log_prob(zt)
         log_pz_normal = p1.log_prob(zt)
         kld_normal = log_qz_normal - log_pz_normal
-
         kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        
         # Current KLD divergence
         ut = self.trans_func(zt)
         ut = torch.sum(ut, dim=1) + self.b
@@ -212,9 +212,7 @@ class AfflineVAESynthetic(pl.LightningModule):
         et_, logabsdet = self.spline(epst_)
         log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
         q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
-
         log_qz_laplace = q_laplace.log_prob(zt_)
-
         kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
         kld_laplace = kld_laplace.mean()
 
@@ -223,7 +221,6 @@ class AfflineVAESynthetic(pl.LightningModule):
         zt_recon = mu[:,-1,:].T.detach().cpu().numpy()
         zt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
         mcc = compute_mcc(zt_recon, zt_true, "Pearson")
-        self.log("val_elbo_loss", loss)
         self.log("val_mcc", mcc) 
         # mu0 = mu[:,:-1,:]
         # mu1 = mu[:,-1:,:]
@@ -236,7 +233,7 @@ class AfflineVAESynthetic(pl.LightningModule):
         # mu0 = torch.sum(mu0, dim=1) + self.b
         # var0 = torch.exp(log_var0)
         self.log("val_elbo_loss", loss)
-        self.log("val_recon_loss", (self.lag+1) * recon_loss)
+        self.log("val_recon_loss", recon_loss)
         self.log("val_kld_normal", kld_normal)
         self.log("val_kld_laplace", kld_laplace)
         return loss
