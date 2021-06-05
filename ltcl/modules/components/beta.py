@@ -117,7 +117,7 @@ class BetaVAE_MLP(nn.Module):
                                        nn.LeakyReLU(0.2),
                                        nn.Linear(hidden_dim, hidden_dim),
                                        nn.LeakyReLU(0.2),
-                                       nn.Linear(hidden_dim, 2*z_dim),
+                                       nn.Linear(hidden_dim, 2*z_dim)
                                     )
 
         self.decoder = nn.Sequential(
