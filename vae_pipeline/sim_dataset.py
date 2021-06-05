@@ -268,62 +268,98 @@ def linear_nonGaussian_deprecated():
 # 		np.save(os.path.join(path, "W%d"%(lags-l)), B)
 
 def post_nonlinear_Gaussian():
+    lags = 1
+    Nlayer = 3
+    negSlope = 0.2
+    batch_size = 1000000
     path = os.path.join(root_dir, "post_nonlinear_gaussian")
     os.makedirs(path, exist_ok=True)
-    for chunk_idx in tqdm.tqdm(range(chunks)):
-        batch_data = []
-        latent_data = []
-        loc =  np.array([0, 1 ,2 , 3])
-        scale = np.array([5, 1, 2, 4])
-        # random initial y0 which follows normal distribution (BS, latent_dim)
-        latents = np.random.normal(loc, scale, (batch_size, latent_size))
 
-        for t in range(length):
-            latent_data.append(latents)
-            # x_t = g(y_t)
-            mixedDat = mixing_func(torch.from_numpy(latents).float()).detach().numpy()
-            batch_data.append(mixedDat)
+    # why
+    mixingList = []
+    for l in range(Nlayer - 1):
+        # generate causal matrix first:
+        A = ortho_group.rvs(latent_size)  # generateUniformMat( Ncomp, condThresh )
+        mixingList.append(A)
 
-            # y_t
-            midDat = np.copy(latents) 
-            # y_(t+1) = f2(f1(y_t) + e_t)
+    y_l = np.random.normal(0, 1, (batch_size, lags, latent_size))
+    y_l = (y_l - np.mean(y_l, axis=0 ,keepdims=True)) / np.std(y_l, axis=0 ,keepdims=True)
 
-            midDat = trans_func(torch.from_numpy(midDat).float()) + 0.3*torch.normal(0, 2, size=(batch_size, latent_size)) 
-            midDat = nonlinearity(midDat).detach().numpy()
-            latents = midDat
+    # Mixing function
+    mixedDat = np.copy(y_l)
+    for l in range(Nlayer - 1):
+        mixedDat = leaky_ReLU(mixedDat, negSlope)
+        mixedDat = np.dot(mixedDat, mixingList[l])
+    x_l = np.copy(mixedDat)
 
-        batch_data = np.stack(batch_data, axis=1)
-        latent_data = np.stack(latent_data, axis=1)
-        np.savez(os.path.join(path,"%d"%chunk_idx), 
-        yt=latent_data[:,:-1,:], yt_=latent_data[:,1:,:], xt=batch_data[:,:-1,:], xt_=batch_data[:,1:,:])
+    # Transition function
+    y_t = torch.normal(0, 0.005, size=(batch_size, latent_size)).numpy()
+    # y_t = (y_t - np.mean(y_t, axis=0 ,keepdims=True)) / np.std(y_t, axis=0 ,keepdims=True)
+    for l in range(lags):
+        y_t += leaky_ReLU(y_l[:,l,:], negSlope)
+        y_t = np.dot(y_t, mixingList[l])
+    y_t = leaky_ReLU(y_t, negSlope)
+    # y_t = np.dot(y_t, mixingList[l])
+
+    # Mixing function
+    mixedDat = np.copy(y_t)
+    for l in range(Nlayer - 1):
+        mixedDat = leaky_ReLU(mixedDat, negSlope)
+        mixedDat = np.dot(mixedDat, mixingList[l])
+    x_t = np.copy(mixedDat)
+
+    np.savez(os.path.join(path, "data"), 
+            yt = y_l, # (64, 1, 4)
+            yt_ = y_t, # (64, 4)
+            xt = x_l, # (64, 1, 4)
+            xt_= x_t) # (64, 4)
 
 def post_nonlinear_nonGaussian():
+    lags = 1
+    Nlayer = 3
+    negSlope = 0.2
+    batch_size = 1000000
     path = os.path.join(root_dir, "post_nonlinear_nongaussian")
     os.makedirs(path, exist_ok=True)
-    for chunk_idx in tqdm.tqdm(range(chunks)):
-        batch_data = []
-        latent_data = []
-        loc =  np.array([0, 1, 2, 3])
-        scale = np.array([5, 1, 2, 4])
-        latents = np.random.normal(loc, scale, (batch_size, latent_size))
 
-        for t in range(length):
-            latent_data.append(latents)
-            # x_t = g(y_t)
-            mixedDat = mixing_func(torch.from_numpy(latents).float()).detach().numpy()
-            batch_data.append(mixedDat)
+    # why
+    mixingList = []
+    for l in range(Nlayer - 1):
+        # generate causal matrix first:
+        A = ortho_group.rvs(latent_size)  # generateUniformMat( Ncomp, condThresh )
+        mixingList.append(A)
 
-            # y_t
-            midDat = np.copy(latents) 
-            # y_(t+1) = f2(f1(y_t) + e_t)
-            midDat = trans_func(torch.from_numpy(midDat).float()) + 0.3*torch.distributions.laplace.Laplace(0,2).rsample((batch_size, latent_size))
-            midDat = nonlinearity(midDat).detach().numpy()
-            latents = midDat
+    y_l = np.random.normal(0, 1, (batch_size, lags, latent_size))
+    y_l = (y_l - np.mean(y_l, axis=0 ,keepdims=True)) / np.std(y_l, axis=0 ,keepdims=True)
 
-        batch_data = np.stack(batch_data, axis=1)
-        latent_data = np.stack(latent_data, axis=1)
-        np.savez(os.path.join(path,"%d"%chunk_idx), 
-        yt=latent_data[:,:-1,:], yt_=latent_data[:,1:,:], xt=batch_data[:,:-1,:], xt_=batch_data[:,1:,:])
+    # Mixing function
+    mixedDat = np.copy(y_l)
+    for l in range(Nlayer - 1):
+        mixedDat = leaky_ReLU(mixedDat, negSlope)
+        mixedDat = np.dot(mixedDat, mixingList[l])
+    x_l = np.copy(mixedDat)
+
+    # Transition function
+    y_t = torch.distributions.laplace.Laplace(0,0.005).rsample((batch_size, latent_size)).numpy()
+    # y_t = (y_t - np.mean(y_t, axis=0 ,keepdims=True)) / np.std(y_t, axis=0 ,keepdims=True)
+    for l in range(lags):
+        y_t += leaky_ReLU(y_l[:,l,:], negSlope)
+        y_t = np.dot(y_t, mixingList[l])
+    y_t = leaky_ReLU(y_t, negSlope)
+    # y_t = np.dot(y_t, mixingList[l])
+
+    # Mixing function
+    mixedDat = np.copy(y_t)
+    for l in range(Nlayer - 1):
+        mixedDat = leaky_ReLU(mixedDat, negSlope)
+        mixedDat = np.dot(mixedDat, mixingList[l])
+    x_t = np.copy(mixedDat)
+
+    np.savez(os.path.join(path, "data"), 
+            yt = y_l, # (64, 1, 4)
+            yt_ = y_t, # (64, 4)
+            xt = x_l, # (64, 1, 4)
+            xt_= x_t) # (64, 4)
 
 # def sparse_nonlinear():
 # 	path = os.path.join(root_dir, "post_nonlinear_nongaussian")
@@ -359,8 +395,8 @@ def post_nonlinear_nonGaussian():
 
 if __name__ == "__main__":
     linear_nonGaussian()
-    # post_nonlinear_Gaussian()
-    # post_nonlinear_nonGaussian()
+    post_nonlinear_Gaussian()
+    post_nonlinear_nonGaussian()
 
     # datum_names = glob.glob(os.path.join("./dataset/post_nonlinear_Gaussian/", "*.npz"))
     # n_samples = len(datum_names)
