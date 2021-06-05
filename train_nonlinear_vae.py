@@ -46,7 +46,7 @@ if __name__ == "__main__":
     argparser.add_argument('-lag', default=1, type=int)
     argparser.add_argument('-z_dim', default=4, type=int)
     argparser.add_argument('-lr', default=5e-4, type=float)
-    argparser.add_argument('-beta', default=0.0025, type=float)
+    argparser.add_argument('-beta', default=0.0005, type=float)
     argparser.add_argument('-gamma', default=0.0075, type=float)
     argparser.add_argument('-input_dim', default=4, type=int)
     args = argparser.parse_args()
