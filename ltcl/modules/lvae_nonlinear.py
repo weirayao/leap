@@ -54,13 +54,16 @@ class AfflineVAESynthetic(pl.LightningModule):
         input_dim,
         lag=1,
         beta=1,
+        alpha=1,
         lr=1e-4,
         z_dim=10, 
         gamma=10,
         rate_prior=1,
         hidden_dim=128,
         diagonal=False,
-        decoder_dist='gaussian'):
+        decoder_dist='gaussian',
+        nonlinear_type='gaussian'
+        ):
         '''Import Beta-VAE as encoder/decoder'''
         super().__init__()
         self.net = BetaVAE_MLP(input_dim=input_dim, 
@@ -74,15 +77,22 @@ class AfflineVAESynthetic(pl.LightningModule):
                                           bound=5,
                                           count_bins=8,
                                           order="linear")
+        self.f1 = nn.Sequential(nn.Linear(z_dim, z_dim),
+                                nn.LeakyReLU(0.2))
+        self.f2 = nn.Sequential(nn.Linear(z_dim, z_dim),
+                                nn.LeakyReLU(0.2))
+        self.coff = nn.Linear(z_dim, z_dim)
         # self.spline.load_state_dict(torch.load("/home/yuewen/spline.pth"))
         self.lr = lr
         self.lag = lag
         self.beta = beta
         self.z_dim = z_dim
+        self.alpha = alpha
         self.gamma = gamma
         self.input_dim = input_dim
         self.rate_prior = rate_prior
         self.decoder_dist = decoder_dist
+        self.nonlinear_type = nonlinear_type
         self.b = nn.Parameter(0.01 * torch.randn(1, z_dim))
         # base distribution for calculation of log prob under the model
         self.register_buffer('base_dist_var', torch.eye(self.z_dim))
@@ -135,30 +145,44 @@ class AfflineVAESynthetic(pl.LightningModule):
         have question on this part...
         '''
         # Current KLD divergence
-        ut = self.trans_func(zt)
-        ut = torch.sum(ut, dim=1) + self.b
-        epst_ = zt_.squeeze() + ut
-        et_, logabsdet = self.spline(epst_)
-        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        if self.nonlinear_type == "gaussian":
+            zt_mid = self.f1(zt)
+            noise_term = nn.Parameter(torch.randn(zt.shape).cuda())
+            zt_mid = zt_mid + self.coff(noise_term)
+            zt_bar = self.f2(zt_mid)
+            recon_zt_ = reconstruction_loss(zt_, zt_bar, self.decoder_dist)
+        else:
+            zt_mid = self.f1(zt)
+            noise_term = nn.Parameter(torch.distributions.laplace.Laplace(0,1).rsample(zt.shape).cuda())
+            zt_mid = zt_mid + self.coff(noise_term)
+            zt_bar = self.f2(zt_mid)
+            recon_zt_ = reconstruction_loss(zt_, zt_bar, self.decoder_dist)
+        coff = torch.abs(self.coff.weight).mean()
 
-        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
-        log_qz_laplace = q_laplace.log_prob(zt_)
+        # # Current KLD divergence
+        # ut = self.trans_func(zt)
+        # ut = torch.sum(ut, dim=1) + self.b
+        # epst_ = zt_.squeeze() + ut
+        # et_, logabsdet = self.spline(epst_)
+        # log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        # q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
+        # log_qz_laplace = q_laplace.log_prob(zt_)
+        # kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
+        # kld_laplace = kld_laplace.mean()       
 
-        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
-        kld_laplace = kld_laplace.mean()       
-
-        # loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace 
-        loss = (self.lag+1) * recon_loss + self.beta * kld_normal 
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * recon_zt_ + self.alpha * coff
+        # loss = (self.lag+1) * recon_loss + self.beta * kld_normal 
 
         zt_recon = mu[:,-1,:].T.detach().cpu().numpy()
         zt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
         mcc = compute_mcc(zt_recon, zt_true, "Pearson")
         
         self.log("train_mcc", mcc) 
+        self.log("train_coff", coff)
         self.log("train_elbo_loss", loss)
+        self.log("train_recon_zt_", recon_zt_)
         self.log("train_recon_loss", recon_loss)
         self.log("train_kld_normal", kld_normal)
-        self.log("train_kld_laplace", kld_laplace)
 
         return loss
     
@@ -187,28 +211,34 @@ class AfflineVAESynthetic(pl.LightningModule):
         kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
 
         # Current KLD divergence
-        ut = self.trans_func(zt)
-        ut = torch.sum(ut, dim=1) + self.b
-        epst_ = zt_.squeeze() + ut
-        et_, logabsdet = self.spline(epst_)
-        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
-        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
-        log_qz_laplace = q_laplace.log_prob(zt_)
-        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
-        kld_laplace = kld_laplace.mean()
+        if self.nonlinear_type == "gaussian":
+            zt_mid = self.f1(zt)
+            noise_term = nn.Parameter(torch.randn(zt.shape).cuda())
+            zt_mid = zt_mid + self.coff(noise_term)
+            zt_bar = self.f2(zt_mid)
+            recon_zt_ = reconstruction_loss(zt_, zt_bar, self.decoder_dist)
+        else:
+            zt_mid = self.f1(zt)
+            noise_term = nn.Parameter(torch.distributions.laplace.Laplace(0,1).rsample(zt.shape).cuda())
+            zt_mid = zt_mid + self.coff(noise_term)
+            zt_bar = self.f2(zt_mid)
+            recon_zt_ = reconstruction_loss(zt_, zt_bar, self.decoder_dist)
+        coff = torch.abs(self.coff.weight).mean()
 
-        # loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace 
-        loss = (self.lag+1) * recon_loss + self.beta * kld_normal 
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * recon_zt_ + self.alpha * coff
+        # loss = (self.lag+1) * recon_loss + self.beta * kld_normal 
 
         zt_recon = mu[:,-1,:].T.detach().cpu().numpy()
         zt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
         mcc = compute_mcc(zt_recon, zt_true, "Pearson")
 
         self.log("val_mcc", mcc) 
+        self.log("val_coff", coff)
         self.log("val_elbo_loss", loss)
+        self.log("val_recon_zt_", recon_zt_)
         self.log("val_recon_loss", recon_loss)
         self.log("val_kld_normal", kld_normal)
-        self.log("val_kld_laplace", kld_laplace)
+
         return loss
     
     def sample(self, xt):
