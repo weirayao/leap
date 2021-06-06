@@ -60,6 +60,7 @@ class AfflineVAESynthetic(pl.LightningModule):
         lr = 1e-4,
         diagonal = False,
         decoder_dist = 'gaussian',
+        warm_start = False,
         rate_prior = 1):
         '''Import Beta-VAE as encoder/decoder'''
         super().__init__()
@@ -81,7 +82,8 @@ class AfflineVAESynthetic(pl.LightningModule):
                                           bound = 5,
                                           count_bins = 8,
                                           order = "linear")
-        self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
+        if warm_start:
+            self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
         self.lr = lr
         self.beta = beta
         self.gamma = gamma
@@ -147,34 +149,8 @@ class AfflineVAESynthetic(pl.LightningModule):
 
         kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
         kld_laplace = kld_laplace.mean()       
-        # normal_entropy = compute_ent_normal(logvar)
-        # cross_ent_normal = compute_cross_ent_normal(mu, logvar)
-        # kld_normal = torch.mean(torch.sum(cross_ent_normal - normal_entropy, dim=1), dim=0)
-        # kld_normal = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim = 1), dim = 0)
-        # Laplacian transition loss
-        # mu = mu.view(batch_size, -1, self.z_dim)
-        # logvar = logvar.reshape(batch_size, -1, self.z_dim)
-        # z = z.reshape(batch_size, -1, self.z_dim)
-        # mut = mu[:,:-1,:]
-        # mu1 = mu[:,-1:,:]
-        # ut = self.trans_func(mut)
-        # mu0 = torch.sum(ut, dim=1) + self.b
-        # logvart = logvar[:,:-1,:]
-        # logvar1 = logvar[:,-1:,:]
-        # logvart = self.trans_func(logvart)
-        # logvar0 = 
-        # rate_prior0 = self.rate_prior
-        # rate_prior1 = self.rate_prior
 
-        # # mu0 = self.trans_func(mu0)
-        # # mu0 = torch.sum(mu0, dim=1) + self.b
-        # # var0 = torch.exp(log_var0)
-        # eps_t = mut_.squeeze() - ut
-        # z, logabsdet = self.spline(eps_t)
-
-        # kld_laplace = -1 * torch.mean(self.base_dist.log_prob(z) + logabsdet)
         loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace  
-
 
         self.log("train_elbo_loss", loss)
         self.log("train_recon_loss", (self.lag+1) * recon_loss)
@@ -225,16 +201,6 @@ class AfflineVAESynthetic(pl.LightningModule):
         mcc = compute_mcc(zt_recon, zt_true, "Pearson")
         self.log("val_elbo_loss", loss)
         self.log("val_mcc", mcc) 
-        # mu0 = mu[:,:-1,:]
-        # mu1 = mu[:,-1:,:]
-        # logvar0 = logvar[:,:-1,:]
-        # logvar1 = logvar[:,-1:,:]
-        # rate_prior0 = self.rate_prior
-        # rate_prior1 = self.rate_prior
-
-        # mu0 = self.trans_func(mu0)
-        # mu0 = torch.sum(mu0, dim=1) + self.b
-        # var0 = torch.exp(log_var0)
         self.log("val_elbo_loss", loss)
         self.log("val_recon_loss", (self.lag+1) * recon_loss)
         self.log("val_kld_normal", kld_normal)
@@ -255,3 +221,179 @@ class AfflineVAESynthetic(pl.LightningModule):
         # An scheduler is optional, but can help in flows to get the last bpd improvement
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [optimizer], [scheduler]
+
+class AfflineVAEKittiMask(pl.LightningModule):
+
+
+    def __init__(
+        self, 
+        input_dim,
+        z_dim=10, 
+        lag = 1,
+        hidden_dim = 128,
+        beta = 1,
+        gamma = 10,
+        lr = 1e-4,
+        diagonal = False,
+        decoder_dist = 'gaussian',
+        warm_start = False,
+        rate_prior = 1):
+        '''Import Beta-VAE as encoder/decoder'''
+        super().__init__()
+        self.z_dim = z_dim
+        self.input_dim = input_dim
+        
+        self.net = BetaVAE_CNN(input_dim=input_dim, 
+                               z_dim=z_dim, 
+                               hidden_dim=hidden_dim)
+
+        self.trans_func = GroupLinearLayer(din = z_dim, 
+                                           dout = z_dim,
+                                           num_blocks = lag,
+                                           diagonal = diagonal)
+
+        self.b = nn.Parameter(0.01 * torch.randn(1, z_dim))
+
+        self.spline = ComponentWiseSpline(input_dim = z_dim,
+                                          bound = 5,
+                                          count_bins = 8,
+                                          order = "linear")
+        if warm_start:
+            self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
+        self.lr = lr
+        self.beta = beta
+        self.gamma = gamma
+        self.lag = lag
+        self.decoder_dist = decoder_dist
+        self.rate_prior = rate_prior
+
+        # base distribution for calculation of log prob under the model
+        self.register_buffer('base_dist_mean', torch.zeros(self.z_dim))
+        self.register_buffer('base_dist_var', torch.eye(self.z_dim))
+
+    @property
+    def base_dist(self):
+        return D.MultivariateNormal(self.base_dist_mean, self.base_dist_var)
+
+    def forward(self, batch):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        return self.net(x)
+
+    def compute_cross_ent_laplace(self, mean, logvar, rate_prior):
+        var = torch.exp(logvar)
+        sigma = torch.sqrt(var)
+        ce = - torch.log(rate_prior / 2) + rate_prior * sigma *\
+             np.sqrt(2 / np.pi) * torch.exp(- mean**2 / (2 * var)) -\
+             rate_prior * mean * (
+                     1 - 2 * self.normal_dist.cdf(mean / sigma))
+        return ce
+
+    def training_step(self, batch, batch_idx):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        x_recon, mu, logvar, z = self.net(x)
+        # Normal VAE loss: recon_loss + kld_loss
+        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        mu = mu.view(batch_size, -1, self.z_dim)
+        logvar = logvar.view(batch_size, -1, self.z_dim)
+        z = z.view(batch_size, -1, self.z_dim)
+        mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
+        logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
+        zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        # Past KLD divergenve
+        p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
+        q1 = D.Normal(mut, torch.exp(logvart / 2))
+        log_qz_normal = q1.log_prob(zt)
+        log_pz_normal = p1.log_prob(zt)
+        kld_normal = log_qz_normal - log_pz_normal
+
+        kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        # Current KLD divergence
+        ut = self.trans_func(zt)
+        ut = torch.sum(ut, dim=1) + self.b
+        epst_ = zt_.squeeze() + ut
+        et_, logabsdet = self.spline(epst_)
+        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
+
+        log_qz_laplace = q_laplace.log_prob(zt_)
+
+        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
+        kld_laplace = kld_laplace.mean()       
+
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace  
+
+        self.log("train_elbo_loss", loss)
+        self.log("train_recon_loss", (self.lag+1) * recon_loss)
+        self.log("train_kld_normal", kld_normal)
+        self.log("train_kld_laplace", kld_laplace)
+
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        x_recon, mu, logvar, z = self.net(x)
+        # Normal VAE loss: recon_loss + kld_loss
+        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        mu = mu.view(batch_size, -1, self.z_dim)
+        logvar = logvar.view(batch_size, -1, self.z_dim)
+        z = z.view(batch_size, -1, self.z_dim)
+        mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
+        logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
+        zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        # Past KLD divergenve
+        p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
+        q1 = D.Normal(mut, torch.exp(logvart / 2))
+        log_qz_normal = q1.log_prob(zt)
+        log_pz_normal = p1.log_prob(zt)
+        kld_normal = log_qz_normal - log_pz_normal
+
+        kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        # Current KLD divergence
+        ut = self.trans_func(zt)
+        ut = torch.sum(ut, dim=1) + self.b
+        epst_ = zt_.squeeze() + ut
+        et_, logabsdet = self.spline(epst_)
+        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
+
+        log_qz_laplace = q_laplace.log_prob(zt_)
+
+        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
+        kld_laplace = kld_laplace.mean()
+
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace 
+
+        zt_recon = mu[:,-1,:].T.detach().cpu().numpy()
+        zt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
+        mcc = compute_mcc(zt_recon, zt_true, "Pearson")
+        self.log("val_elbo_loss", loss)
+        self.log("val_mcc", mcc) 
+        self.log("val_elbo_loss", loss)
+        self.log("val_recon_loss", (self.lag+1) * recon_loss)
+        self.log("val_kld_normal", kld_normal)
+        self.log("val_kld_laplace", kld_laplace)
+        return loss
+    
+    def sample(self, xt):
+        batch_size = xt.shape[0]
+        e = torch.randn(batch_size, self.z_dim).to(xt.device)
+        eps, _ = self.spline.inverse(e)
+        return eps
+
+    def reconstruct(self):
+        return self.forward(batch)[0]
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
+        # An scheduler is optional, but can help in flows to get the last bpd improvement
+        # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
+        return optimizer

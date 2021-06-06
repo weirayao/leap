@@ -93,6 +93,7 @@ def generateUniformMat(Ncomp, condT):
 
 def linear_nonGaussian():
     batch_size = 1000000
+    latent_size = 8
     Nlayer = 3
     negSlope = 0.2
     Niter4condThresh = 1e4

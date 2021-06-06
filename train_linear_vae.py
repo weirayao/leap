@@ -21,7 +21,7 @@ def main(args):
         verbose=False,
         mode='min')
 
-    model = AfflineVAESynthetic(4,4,2, beta = args.beta, gamma = args.gamma, lr=args.lr)
+    model = AfflineVAESynthetic(args.size,args.size,args.lag, beta = args.beta, gamma = args.gamma, lr=args.lr, warm_start=True)
 
     trainer = pl.Trainer(default_root_dir = "/home/cmu_wyao/checkpoints/linear_vae",
                          gpus=[2], 
@@ -33,6 +33,19 @@ def main(args):
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
+
+    argparser.add_argument(
+        '-size',
+        default=4,
+        type=int
+    )
+
+    argparser.add_argument(
+        '-lag',
+        default=2,
+        type=int
+    )
+
     argparser.add_argument(
         '-beta',
         default=0.0025,

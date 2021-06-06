@@ -27,20 +27,20 @@ def main():
     # transitions[0] is B_{-L}, transotions[-1] is B_0/1
     transitions.reverse()
 
-    # mixing_func = mixing_func = nn.Sequential(
-    #                                             nn.Linear(latent_size, latent_size, bias=False),
-    #                                             nn.LeakyReLU(0.95),
-    #                                             nn.Linear(latent_size, latent_size, bias=False),
-    #                                             nn.LeakyReLU(0.85),
-    #                                             nn.Linear(latent_size, input_size, bias=False),
-    #                                          ).cuda()
-    # mixing_func.apply(ortho_init_weights)
+    mixing_func = mixing_func = nn.Sequential(
+                                                nn.Linear(latent_size, latent_size, bias=False),
+                                                nn.LeakyReLU(0.2),
+                                                nn.Linear(latent_size, latent_size, bias=False),
+                                                nn.LeakyReLU(0.2),
+                                                nn.Linear(latent_size, input_size, bias=False),
+                                             ).cuda()
+    mixing_func.apply(ortho_init_weights)
 
-    mixing_func = AfflineCoupling(n_blocks = 10,
-                                  input_size = input_size,
-                                  hidden_size = 256,
-                                  n_hidden = 8,
-                                  batch_norm = False).cuda()
+    # mixing_func = AfflineCoupling(n_blocks = 10,
+    #                               input_size = input_size,
+    #                               hidden_size = 256,
+    #                               n_hidden = 8,
+    #                               batch_norm = False).cuda()
     length = 80 + lags # Use first lags elements as lags
     chunks = 1000
     batch_size = 128
