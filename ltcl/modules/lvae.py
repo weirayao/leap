@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 import torch.distributions as D
 from torch.nn import functional as F
 
-from .components.beta import BetaVAE_MLP
+from .components.beta import BetaVAE_MLP, BetaVAE_CNN
 from .metrics.correlation import compute_mcc
 from .components.base import GroupLinearLayer
 from .components.transforms import ComponentWiseSpline
@@ -215,9 +215,7 @@ class AfflineVAESynthetic(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
-        # An scheduler is optional, but can help in flows to get the last bpd improvement
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
-        return [optimizer], [scheduler]
+        return optimizer
 
 class AfflineVAEKittiMask(pl.LightningModule):
 
