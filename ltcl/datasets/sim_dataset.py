@@ -1,9 +1,9 @@
 import os
-import torch
-from torch.utils.data import Dataset
-import numpy as np
-import random
 import glob
+import torch
+import random
+import numpy as np
+from torch.utils.data import Dataset
 
 DIR = "/home/cmu_wyao/projects/data/"
 MIN = torch.Tensor([-78.12708  ,  -1.7142837, -19.542505 , -22.891457 ])
@@ -30,11 +30,7 @@ class SimulationDataset(Dataset):
 		yt_ = torch.from_numpy(self.data["yt_"][idx].astype('float32')).unsqueeze(0)
 		xt_ = torch.from_numpy(np.expand_dims(self.data["xt_"][idx], axis=0).astype('float32'))
 
-		sample = {"yt": yt,
-				  "yt_": yt_,
-				  "xt": xt,
-				  "xt_": xt_}
-
+		sample = {"yt": yt, "yt_": yt_, "xt": xt, "xt_": xt_}
 		return sample
 
 class SimulationDatasetTwoSample(Dataset):
