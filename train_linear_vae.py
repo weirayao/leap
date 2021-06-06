@@ -34,7 +34,6 @@ def main(args):
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description=__doc__)
-<<<<<<< HEAD
 
     argparser.add_argument(
         '-size',
@@ -65,10 +64,5 @@ if __name__ == "__main__":
         default=5e-4,
         type=float
     )
-=======
-    argparser.add_argument('-beta', default=0.0025, type=float)
-    argparser.add_argument('-gamma', default=0.0075, type=float)
-    argparser.add_argument('-lr', default=5e-4, type=float)
->>>>>>> f3c995bbcdea9562fd5eb06644698432b3990a46
     args = argparser.parse_args()
     main(args)
