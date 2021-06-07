@@ -23,7 +23,7 @@ class BetaVAE_CNN(nn.Module):
     """Model proposed in original beta-VAE paper(Higgins et al, ICLR, 2017)."""
 
     def __init__(self, z_dim=10, nc=3):
-        super(BetaVAE_H, self).__init__()
+        super(BetaVAE_CNN, self).__init__()
         self.z_dim = z_dim
         self.nc = nc
         self.encoder = nn.Sequential(
@@ -62,7 +62,7 @@ class BetaVAE_CNN(nn.Module):
             for m in self._modules[block]:
                 kaiming_init(m)
 
-    def forward(self, x, return_z=False):
+    def forward(self, x, return_z=True):
         distributions = self._encode(x)
         mu = distributions[:, :self.z_dim]
         logvar = distributions[:, self.z_dim:]

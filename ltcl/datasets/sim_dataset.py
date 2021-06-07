@@ -5,17 +5,13 @@ import random
 import numpy as np
 from torch.utils.data import Dataset
 
-DIR = "/home/cmu_wyao/projects/data/"
-MIN = torch.Tensor([-78.12708  ,  -1.7142837, -19.542505 , -22.891457 ])
-MAX = torch.Tensor([591.5796 , 496.26367,  50.26638, 143.61914])
-
 class SimulationDataset(Dataset):
 	
-	def __init__(self, transition="linear_nongaussian"):
+	def __init__(self, directory, transition="linear_nongaussian"):
 		super().__init__()
 		assert transition in ["linear_nongaussian", "post_nonlinear_gaussian", 
 							  "post_nonlinear_nongaussian", "post_nonlinear_nongaussian"]
-		self.path = os.path.join(DIR, transition, "data.npz")
+		self.path = os.path.join(directory, transition, "data.npz")
 		self.npz = np.load(self.path)
 		self.data = { }
 		for key in ["yt", "xt", "yt_", "xt_"]:

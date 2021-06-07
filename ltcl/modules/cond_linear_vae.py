@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 import torch.distributions as D
 from torch.nn import functional as F
 
-from .components.beta import BetaVAE_MLP
+from .components.beta_v2 import BetaVAE_MLP
 from .metrics.correlation import compute_mcc
 from .components.base import GroupLinearLayer
 from .components.transforms import ComponentWiseSpline
@@ -47,7 +47,7 @@ def compute_sparsity(mu, normed=True):
     return torch.mean(torch.abs(diff))
 
 
-class AfflineVAESynthetic(pl.LightningModule):
+class CondAfflineVAESynthetic(pl.LightningModule):
 
     def __init__(
         self, 

@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from ltcl.modules.lvae import AfflineVAESynthetic
+from ltcl.modules.lvae_v2 import AfflineVAESynthetic
 from ltcl.datasets.sim_dataset import SimulationDatasetTwoSample, SimulationDataset
 
 

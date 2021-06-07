@@ -12,12 +12,11 @@ def ortho_init_weights(m):
         torch.nn.init.orthogonal_(m.weight)
 
 def main():
-    input_size = 4
     # Super-Gaussian is exp(Z) of standard normals
     # Sub-Gaussian is Laplace distribution
     lags = 2
-    input_size = 32
-    latent_size = 32
+    input_size = 8
+    latent_size = 8
     transitions = [ ]
     scale = 2
     for l in range(lags):
@@ -50,15 +49,12 @@ def main():
         y_l = torch.rand(batch_size, lags, latent_size).cuda() 
         for t in range(length):
             # Sample current noise y_t = [y_1, y_2]
-            # y_1 = torch.exp(torch.normal(0, 1, size=(batch_size, latent_size//2))).cuda()
             y_1 = torch.distributions.laplace.Laplace(0,0.1).rsample((batch_size, latent_size//2)).cuda()
-            # y_2 = torch.rand(batch_size, latent_size//2) - 0.5
-            # y_2 = torch.distributions.uniform.Uniform(-0.5, 0.5).sample((batch_size, latent_size//2)).cuda() 
             y_2 = torch.distributions.laplace.Laplace(0,0.1).rsample((batch_size, latent_size//2)).cuda()
             y_t = torch.cat((y_1, y_2), dim=1)
             for l in range(lags):
                 y_t += torch.mm(y_l[:,l,:], transitions[l])
-            x_t, _ = mixing_func.inverse(y_t)
+            x_t = mixing_func(y_t)
             npx = x_t.detach().cpu().numpy()
             batch_data.append(npx)
             # Update past latents

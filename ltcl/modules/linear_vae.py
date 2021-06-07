@@ -1,168 +1,386 @@
-"""Linear Latent Transition Causal Model Estimated by Temporal VAE"""
+"""Temporal VAE with gaussian margial and laplacian transition prior"""
+
 import torch
-from torch import nn
-import torch.nn.functional as F
-from .components.vae import LinearTemporalVAESynthetic
-from .components.tc import Discriminator, permute_dims
-from .metrics.correlation import compute_mcc
-import pytorch_lightning as pl
-import random
+import numpy as np
 import ipdb as pdb
+import torch.nn as nn
+import pytorch_lightning as pl
+import torch.distributions as D
+from torch.nn import functional as F
+
+from .components.beta import BetaVAE_MLP, BetaVAE_CNN
+from .metrics.correlation import compute_mcc
+from .components.base import GroupLinearLayer
+from .components.transforms import ComponentWiseSpline
+
+
+def reconstruction_loss(x, x_recon, distribution):
+    batch_size = x.size(0)
+    assert batch_size != 0
+
+    if distribution == 'bernoulli':
+        recon_loss = F.binary_cross_entropy_with_logits(
+            x_recon, x, size_average=False).div(batch_size)
+
+    elif distribution == 'gaussian':
+        recon_loss = F.mse_loss(x_recon, x, size_average=False).div(batch_size)
+
+    elif distribution == 'sigmoid_gaussian':
+        x_recon = F.sigmoid(x_recon)
+        recon_loss = F.mse_loss(x_recon, x, size_average=False).div(batch_size)
+
+    return recon_loss
+
+def compute_cross_ent_normal(mu, logvar):
+    return 0.5 * (mu**2 + torch.exp(logvar)) + np.log(np.sqrt(2 * np.pi))
+
+def compute_ent_normal(logvar):
+    return 0.5 * (logvar + np.log(2 * np.pi * np.e))
+
+def compute_sparsity(mu, normed=True):
+    # assume couples, compute normalized sparsity
+    diff = mu[::2] - mu[1::2]
+    if normed:
+        norm = torch.norm(diff, dim=1, keepdim=True)
+        norm[norm == 0] = 1  # keep those that are same, dont divide by 0
+        diff = diff / norm
+    return torch.mean(torch.abs(diff))
+
 
 class AfflineVAESynthetic(pl.LightningModule):
 
+    def __init__(
+        self, 
+        input_dim,
+        z_dim=10, 
+        lag=1,
+        hidden_dim=128,
+        beta=0.0025,
+        gamma=0.0075,
+        lr=1e-4,
+        diagonal=False,
+        use_warm_start=False,
+        decoder_dist='gaussian',
+        correlation='Pearson'):
+        '''Import Beta-VAE as encoder/decoder'''
+        super().__init__()
+        self.z_dim = z_dim
+        self.input_dim = input_dim
+        
+        self.net = BetaVAE_MLP(input_dim=input_dim, 
+                               z_dim=z_dim, 
+                               hidden_dim=hidden_dim)
 
-	def __init__(
-		self, 
-		input_dim,
-		y_dim, 
-		lag = 1,
-		e_dim = 128,
-		kl_coeff = 1,
-		lr = 1e-4,
-		diagonal = False,
-		negative_slope = 0.2):
-		'''
-		please add your flow module
-		self.flow = XX
-		'''
-		super().__init__()
-		self.y_dim = y_dim
-		self.vae = LinearTemporalVAESynthetic(input_dim = input_dim, 
-											  y_dim = y_dim, 
-											  lag = lag,
-											  e_dim = e_dim,
-											  diagonal = diagonal,
-											  negative_slope = negative_slope,
-											  kl_coeff = kl_coeff)
-		self.lr = lr
-	
-	def forward(self, batch):
-		return self.vae(batch)
-	
-	def training_step(self, batch, batch_idx):
-		_, _, _, _, xt_, recon_xt_, p, q, e, _ = self.vae.forward(batch)
-		loss = self.vae.elbo_loss(xt_, recon_xt_, p, q, e)
-		self.log("train_elbo_loss", loss)
-		return loss
-	
-	def validation_step(self, batch, batch_idx):
-		e_mean, e_logvar, yt, yt_, xt_, recon_xt_, p, q, e, eps = self.vae.forward(batch)
-		loss = self.vae.elbo_loss(xt_, recon_xt_, p, q, e)
+        self.trans_func = GroupLinearLayer(din=z_dim, 
+                                           dout=z_dim,
+                                           num_blocks=lag,
+                                           diagonal=diagonal)
 
-		yt_recon = yt_.squeeze().T.detach().cpu().numpy()
-		yt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
-		mcc = compute_mcc(yt_recon, yt_true, "Pearson")
-		self.log("val_elbo_loss", loss)
-		self.log("val_mcc", mcc)
-		return loss
-	
-	def sample(self, xt):
-		batch_size = xt.shape[0]
-		e = torch.randn(batch_size, self.y_dim)
-		eps, _ = self.vae.spline.inverse(e)
-		ut = self.vae.predict_next_latent(xt)
-		xt_ = self.vae.decode(eps, ut)
-		return xt_, eps
+        self.b = nn.Parameter(0.01 * torch.randn(1, z_dim))
 
-	def reconstruct(self):
-		return self.forward(batch)[5]
+        self.spline = ComponentWiseSpline(input_dim=z_dim,
+                                          bound=5,
+                                          count_bins=8,
+                                          order="linear")
+        if use_warm_start:
+            self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
 
-	def configure_optimizers(self):
-		optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
-		# An scheduler is optional, but can help in flows to get the last bpd improvement
-		scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
-		return [optimizer], [scheduler]
+        self.lr = lr
+        self.lag = lag
+        self.beta = beta
+        self.gamma = gamma
+        self.correlation = correlation
+        self.decoder_dist = decoder_dist
 
-class AfflineVAESyntheticContrast(pl.LightningModule):
+        # base distribution for calculation of log prob under the model
+        self.register_buffer('base_dist_mean', torch.zeros(self.z_dim))
+        self.register_buffer('base_dist_var', torch.eye(self.z_dim))
 
+    @property
+    def base_dist(self):
+        return D.MultivariateNormal(self.base_dist_mean, self.base_dist_var)
 
-	def __init__(
-		self, 
-		input_dim,
-		y_dim, 
-		lag = 1,
-		e_dim = 128,
-		kl_coeff = 1,
-		gamma = 25,
-		lr = 1e-4,
-		diagonal = False,
-		negative_slope = 0.2):
-		'''
-		please add your flow module
-		self.flow = XX
-		'''
-		super().__init__()
-		self.y_dim = y_dim
-		self.vae = LinearTemporalVAESynthetic(input_dim = input_dim, 
-											  y_dim = y_dim, 
-											  lag = lag,
-											  e_dim = e_dim,
-											  diagonal = diagonal,
-											  negative_slope = negative_slope,
-											  kl_coeff = kl_coeff)
-		self.discriminator = Discriminator(z_dim = y_dim)
-		self.lr = lr
-		self.gamma = gamma
-	
-	def forward(self, batch):
-		return self.model(batch)
-	
-	def training_step(self, batch, batch_idx, optimizer_idx):
-		batch1, batch2 = batch
-		batch_size = len(batch1['yt_'])
-		_, _, _, _, xt_, recon_xt_, p, q, e, _ = self.vae.forward(batch1)
-		# VAE training
-		if optimizer_idx == 0:
-			elbo_loss = self.vae.elbo_loss(xt_, recon_xt_, p, q, e)
-			D_z = self.discriminator(e)
-			tc_loss = (D_z[:, :1] - D_z[:, 1:]).mean()
-			vae_loss = elbo_loss + self.gamma * tc_loss
-			self.log("vae_loss", vae_loss)
-			return vae_loss
+    def forward(self, batch):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        return self.net(x)
 
-		# Discriminator training
-		if optimizer_idx == 1:
-			ones = torch.ones(batch_size, dtype=torch.long).to(batch1['yt_'].device)
-			zeros = torch.zeros(batch_size, dtype=torch.long).to(batch1['yt_'].device)
-			e = e.detach()
-			D_e = self.discriminator(e)
-			_, _, _, _, _, _, _, _, e_prime, _ = self.vae.forward(batch2)
-			e_perm = permute_dims(e_prime).detach()
-			D_e_pperm = self.discriminator(e_perm)
-			if random.random() < 0.1:
-				D_tc_loss = 0.5*(F.cross_entropy(D_e, ones) + F.cross_entropy(D_e_pperm, zeros))
-			else:
-				D_tc_loss = 0.5*(F.cross_entropy(D_e, zeros) + F.cross_entropy(D_e_pperm, ones))
-			self.log("tc_loss", D_tc_loss)
-			return D_tc_loss
+    def training_step(self, batch, batch_idx):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        x_recon, mu, logvar, z = self.net(x)
+        
+        # VAE ELBO loss: recon_loss + kld_loss
+        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        mu = mu.view(batch_size, -1, self.z_dim)
+        logvar = logvar.view(batch_size, -1, self.z_dim)
+        z = z.view(batch_size, -1, self.z_dim)
+        mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
+        logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
+        zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        
+        # Past KLD divergenve DKL[q(z_t-tau|x_t-tau) || p(z_t-tau)]
+        p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
+        q1 = D.Normal(mut, torch.exp(logvart / 2))
+        log_qz_normal = q1.log_prob(zt)
+        log_pz_normal = p1.log_prob(zt)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        
+        # Current KLD divergence DKL[q(z_t|x_t) || p(z_t|{z_t-tau})]
+        ut = self.trans_func(zt)
+        ut = torch.sum(ut, dim=1) + self.b
+        epst_ = zt_.squeeze() + ut
+        et_, logabsdet = self.spline(epst_)
+        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
+        log_qz_laplace = q_laplace.log_prob(zt_)
+        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
+        kld_laplace = kld_laplace.mean()       
+        
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace  
 
-	def validation_step(self, batch, batch_idx):
-		batch = batch[0]
-		e_mean, e_logvar, yt, yt_, xt_, recon_xt_, p, q, e, eps = self.vae.forward(batch)
-		loss = self.vae.elbo_loss(xt_, recon_xt_, p, q, e)
-		yt_recon = yt_.squeeze().T.detach().cpu().numpy()
-		yt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
-		mcc = compute_mcc(yt_recon, yt_true, "Pearson")
-		self.log("val_elbo_loss", loss)
-		self.log("val_mcc", mcc)
-		return loss
-	
-	def sample(self, xt):
-		batch_size = xt.shape[0]
-		e = torch.randn(batch_size, self.y_dim)
-		eps, _ = self.vae.spline.inverse(e)
-		ut = self.vae.predict_next_latent(xt)
-		xt_ = self.vae.decode(eps, ut)
-		return xt_, eps
+        self.log("train_elbo_loss", loss)
+        self.log("train_recon_loss", recon_loss)
+        self.log("train_kld_normal", kld_normal)
+        self.log("train_kld_laplace", kld_laplace)
 
-	def reconstruct(self, batch):
-		return self.forward(batch)[5]
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        x_recon, mu, logvar, z = self.net(x)
+        
+        # VAE ELBO loss: recon_loss + kld_loss
+        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        mu = mu.view(batch_size, -1, self.z_dim)
+        logvar = logvar.view(batch_size, -1, self.z_dim)
+        z = z.view(batch_size, -1, self.z_dim)
+        mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
+        logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
+        zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        
+        # Past KLD divergenve DKL[q(z_t-tau|x_t-tau) || p(z_t-tau)]
+        p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
+        q1 = D.Normal(mut, torch.exp(logvart / 2))
+        log_qz_normal = q1.log_prob(zt)
+        log_pz_normal = p1.log_prob(zt)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        
+        # Current KLD divergence DKL[q(z_t|x_t) || p(z_t|{z_t-tau})]
+        ut = self.trans_func(zt)
+        ut = torch.sum(ut, dim=1) + self.b
+        epst_ = zt_.squeeze() + ut
+        et_, logabsdet = self.spline(epst_)
+        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
+        log_qz_laplace = q_laplace.log_prob(zt_)
+        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
+        kld_laplace = kld_laplace.mean()
 
-	def configure_optimizers(self):
-		opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.vae.parameters()), lr=2e-4)
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace 
 
-		opt_d = torch.optim.SGD(filter(lambda p: p.requires_grad, self.discriminator.parameters()), 
-									lr=1e-4)
+        # Compute Mean Correlation Coefficient
+        zt_recon = mu[:,-1,:].T.detach().cpu().numpy()
+        zt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
+        mcc = compute_mcc(zt_recon, zt_true, self.correlation)
 
-		return [opt_v, opt_d], []
+        self.log("val_mcc", mcc) 
+        self.log("val_elbo_loss", loss)
+        self.log("val_recon_loss", recon_loss)
+        self.log("val_kld_normal", kld_normal)
+        self.log("val_kld_laplace", kld_laplace)
+
+        return loss
+    
+    def sample(self, xt):
+        batch_size = xt.shape[0]
+        e = torch.randn(batch_size, self.z_dim).to(xt.device)
+        eps, _ = self.spline.inverse(e)
+        return eps
+
+    def reconstruct(self):
+        return self.forward(batch)[0]
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
+        return optimizer
+
+class AfflineVAECNN(pl.LightningModule):
+
+    def __init__(
+        self, 
+        input_dim,
+        z_dim=10, 
+        lag=1,
+        nc=3,
+        beta=1,
+        gamma=10,
+        lr=1e-4,
+        diagonal=True,
+        warm_start=False,
+        decoder_dist='bernoulli',
+        correlation='Pearson'):
+        '''Import Beta-VAE as encoder/decoder'''
+        super().__init__()
+        self.z_dim = z_dim
+        self.input_dim = input_dim
+        
+        self.net = BetaVAE_MLP(input_dim=input_dim, 
+                               z_dim=z_dim, 
+                               hidden_dim=hidden_dim)
+
+        self.trans_func = GroupLinearLayer(din=z_dim, 
+                                           dout=z_dim,
+                                           num_blocks=lag,
+                                           diagonal=diagonal)
+
+        self.b = nn.Parameter(0.01 * torch.randn(1, z_dim))
+
+        self.spline = ComponentWiseSpline(input_dim=z_dim,
+                                          bound=5,
+                                          count_bins=8,
+                                          order="linear")
+        self.spline.load_state_dict(torch.load("/home/cmu_wyao/spline.pth"))
+        self.lr = lr
+        self.lag = lag
+        self.beta = beta
+        self.gamma = gamma
+        self.rate_prior = rate_prior
+        self.decoder_dist = decoder_dist
+
+        # base distribution for calculation of log prob under the model
+        self.register_buffer('base_dist_mean', torch.zeros(self.z_dim))
+        self.register_buffer('base_dist_var', torch.eye(self.z_dim))
+
+    @property
+    def base_dist(self):
+        return D.MultivariateNormal(self.base_dist_mean, self.base_dist_var)
+
+    def forward(self, batch):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        return self.net(x)
+
+    def compute_cross_ent_laplace(self, mean, logvar, rate_prior):
+        var = torch.exp(logvar)
+        sigma = torch.sqrt(var)
+        ce = - torch.log(rate_prior / 2) + rate_prior * sigma *\
+             np.sqrt(2 / np.pi) * torch.exp(- mean**2 / (2 * var)) -\
+             rate_prior * mean * (
+                     1 - 2 * self.normal_dist.cdf(mean / sigma))
+        return ce
+
+    def training_step(self, batch, batch_idx):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        x_recon, mu, logvar, z = self.net(x)
+        
+        # Normal VAE loss: recon_loss + kld_loss
+        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        mu = mu.view(batch_size, -1, self.z_dim)
+        logvar = logvar.view(batch_size, -1, self.z_dim)
+        z = z.view(batch_size, -1, self.z_dim)
+        mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
+        logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
+        zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        
+        # Past KLD divergenve
+        p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
+        q1 = D.Normal(mut, torch.exp(logvart / 2))
+        log_qz_normal = q1.log_prob(zt)
+        log_pz_normal = p1.log_prob(zt)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        
+        # Current KLD divergence
+        ut = self.trans_func(zt)
+        ut = torch.sum(ut, dim=1) + self.b
+        epst_ = zt_.squeeze() + ut
+        et_, logabsdet = self.spline(epst_)
+        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
+        log_qz_laplace = q_laplace.log_prob(zt_)
+        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
+        kld_laplace = kld_laplace.mean()       
+        
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace  
+
+        self.log("train_elbo_loss", loss)
+        self.log("train_recon_loss", recon_loss)
+        self.log("train_kld_normal", kld_normal)
+        self.log("train_kld_laplace", kld_laplace)
+
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        xt, xt_ = batch["xt"], batch["xt_"]
+        batch_size, _, _  = xt.shape
+        x = torch.cat((xt, xt_), dim=1)
+        x = x.view(-1, self.input_dim)
+        x_recon, mu, logvar, z = self.net(x)
+        
+        # Normal VAE loss: recon_loss + kld_loss
+        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        mu = mu.view(batch_size, -1, self.z_dim)
+        logvar = logvar.view(batch_size, -1, self.z_dim)
+        z = z.view(batch_size, -1, self.z_dim)
+        mut, mut_ = mu[:,:-1,:], mu[:,-1:,:]
+        logvart, logvart_ = logvar[:,:-1,:], logvar[:,-1:,:]
+        zt, zt_ = z[:,:-1,:], z[:,-1:,:]
+        
+        # Past KLD divergenve
+        p1 = D.Normal(torch.zeros_like(mut), torch.ones_like(logvart))
+        q1 = D.Normal(mut, torch.exp(logvart / 2))
+        log_qz_normal = q1.log_prob(zt)
+        log_pz_normal = p1.log_prob(zt)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = torch.sum(torch.sum(kld_normal,dim=-1),dim=-1).mean()      
+        
+        # Current KLD divergence
+        ut = self.trans_func(zt)
+        ut = torch.sum(ut, dim=1) + self.b
+        epst_ = zt_.squeeze() + ut
+        et_, logabsdet = self.spline(epst_)
+        log_pz_laplace = self.base_dist.log_prob(et_) + logabsdet
+        q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
+        log_qz_laplace = q_laplace.log_prob(zt_)
+        kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
+        kld_laplace = kld_laplace.mean()
+
+        loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace 
+
+        zt_recon = mu[:,-1,:].T.detach().cpu().numpy()
+        zt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
+        mcc = compute_mcc(zt_recon, zt_true, "Pearson")
+        self.log("val_mcc", mcc) 
+        self.log("val_elbo_loss", loss)
+        self.log("val_recon_loss", recon_loss)
+        self.log("val_kld_normal", kld_normal)
+        self.log("val_kld_laplace", kld_laplace)
+        return loss
+    
+    def sample(self, xt):
+        batch_size = xt.shape[0]
+        e = torch.randn(batch_size, self.z_dim).to(xt.device)
+        eps, _ = self.spline.inverse(e)
+        return eps
+
+    def reconstruct(self):
+        return self.forward(batch)[0]
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
+        return optimizer
