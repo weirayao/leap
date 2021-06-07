@@ -30,8 +30,6 @@ def main(args):
             print('Pretraining Spline Flow...', end=' ', flush=True)
             pretrain_spline(args.exp)
             print('Done!')
-        else:
-            print('Load Spline Checkpoint', flush=True)
 
     data = SimulationDataset(directory=cfg['ROOT'], 
                              transition=cfg['DATASET'])
@@ -56,11 +54,15 @@ def main(args):
                                 z_dim=cfg['VAE']['LATENT_DIM'], 
                                 lag=cfg['VAE']['LAG'],
                                 hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
+                                bound=cfg['SPLINE']['BOUND'],
+                                count_bins=cfg['SPLINE']['BINS'],
+                                order=cfg['SPLINE']['ORDER'],
                                 beta=cfg['VAE']['BETA'],
                                 gamma=cfg['VAE']['GAMMA'],
                                 lr=cfg['VAE']['LR'],
                                 diagonal=cfg['VAE']['DIAG'],
                                 use_warm_start=cfg['SPLINE']['USE_WARM_START'],
+                                spline_pth=cfg['SPLINE']['PATH']
                                 decoder_dist=cfg['VAE']['DEC']['DIST'],
                                 correlation=cfg['MCC']['CORR'])
 
