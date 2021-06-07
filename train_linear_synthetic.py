@@ -15,9 +15,11 @@ def main(args):
     assert args.exp is not None, "FATAL: "+__file__+": You must specify an exp config file (e.g., *.yaml)"
 
     current_user = pwd.getpwuid(os.getuid()).pw_name
-
-    cfg = load_yaml(os.path.join('./ltcl/configs', 
-                                 '%s.yaml'%args.exp))
+    script_dir = os.path.dirname(__file__)
+    rel_path = os.path.join('./ltcl/configs', 
+                            '%s.yaml'%args.exp)
+    abs_file_path = os.path.join(script_dir, rel_path)
+    cfg = load_yaml(abs_file_path)
     print("######### Configuration #########")
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
@@ -28,6 +30,8 @@ def main(args):
             print('Pretraining Spline Flow...', end=' ', flush=True)
             pretrain_spline(args.exp)
             print('Done!')
+        else:
+            print('Load Spline Checkpoint', flush=True)
 
     data = SimulationDataset(directory=cfg['ROOT'], 
                              transition=cfg['DATASET'])
