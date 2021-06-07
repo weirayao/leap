@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Don't track config files
+*.yaml
+
 # C extensions
 *.so
 
