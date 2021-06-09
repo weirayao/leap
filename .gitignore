@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # Don't track config files
-*.yaml
+try_*.yaml
 
 # C extensions
 *.so

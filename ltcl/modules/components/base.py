@@ -58,7 +58,7 @@ class GroupLinearLayer(nn.Module):
             w = torch.diag_embed(self.d)
             # x: [BS,num_blocks,din]->[num_blocks,BS,din]
             x = x.permute(1,0,2)
-            x = torch.bmm(x, self.w)
+            x = torch.bmm(x, w)
             # x: [BS,num_blocks,dout]
             x = x.permute(1,0,2)
         elif self.hidden is None:

@@ -18,7 +18,7 @@ class KittiMasks(Dataset):
 	1: center of mass horizontal position
 	2: area
 	'''
-	def __init__(self, path='./data/kitti/', transform = 'default',
+	def __init__(self, path='./data/kitti/', transform=None,
 				 max_delta_t=5):
 		self.path = path
 		self.data = None
@@ -31,10 +31,11 @@ class KittiMasks(Dataset):
 
 		if transform == 'default':
 			self.transform = transforms.Compose(
-				[	transforms.ToPILImage(),
-					transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+				[
+					transforms.ToPILImage(),
+					transforms.RandomAffine(degrees=(2., 2.), translate=(5 / 64., 5 / 64.)),
+					transforms.RandomHorizontalFlip(),
 					transforms.ToTensor(),
-					transforms.Lambda(lambda t: t + torch.rand_like(t) / 2**8),
 					lambda x: x.numpy()
 				])
 		else:
@@ -54,8 +55,6 @@ class KittiMasks(Dataset):
 
 		with open(file_path, 'rb') as data:
 			data = pickle.load(data)
-		print(data.keys())
-
 		self.data = data['pedestrians']
 		self.latents = data['pedestrians_latents']
 
@@ -100,16 +99,13 @@ class KittiMasks(Dataset):
 		latents2 = self.latents[sequence_ind][end_ind]  # center of mass vertical, com hor, area
 
 		if self.transform:
-	
-			first_sample = self.transform(first_sample[:,:,None])
-			second_sample = self.transform(second_sample[:,:,None])
-			# stack = np.concatenate([first_sample[:, :, None],
-			# 						second_sample[:, :, None],
-			# 						np.ones_like(second_sample[:, :, None]) * 255],  # add ones to treat like RGB image
-			# 					   axis=2)
-			# first_sample = self.transform(first_sample)  # do same transforms to start and ending
-			# second_sample = self.transform(second_sample)  # do same transforms to start and ending
-			# first_sample, second_sample = samples[0], samples[1]
+			stack = np.concatenate([first_sample[:, :, None],
+									second_sample[:, :, None],
+									np.ones_like(second_sample[:, :, None]) * 255],  # add ones to treat like RGB image
+								   axis=2)
+			samples = self.transform(stack)  # do same transforms to start and ending
+			first_sample, second_sample = samples[0], samples[1]
+
 		if len(first_sample.shape) == 2:  # set channel dim to 1
 			first_sample = first_sample[None]
 			second_sample = second_sample[None]
@@ -117,8 +113,13 @@ class KittiMasks(Dataset):
 		if np.issubdtype(first_sample.dtype, np.uint8) or np.issubdtype(second_sample.dtype, np.uint8):
 			first_sample = first_sample.astype(np.float32) / 255.
 			second_sample = second_sample.astype(np.float32) / 255.
+		
+		sample = {"yt": np.expand_dims(latents1, 0), 
+				  "yt_": np.expand_dims(latents2, 0), 
+				  "xt": np.expand_dims(first_sample, 0), 
+				  "xt_": np.expand_dims(second_sample, 0), }
 
-		return np.expand_dims(first_sample, 0), second_sample, np.expand_dims(latents1, 0), latents2
+		return sample
 
 	def __len__(self):
 		return self.cumlens[-1]

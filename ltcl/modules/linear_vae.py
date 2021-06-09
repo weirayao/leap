@@ -31,22 +31,6 @@ def reconstruction_loss(x, x_recon, distribution):
 
     return recon_loss
 
-def compute_cross_ent_normal(mu, logvar):
-    return 0.5 * (mu**2 + torch.exp(logvar)) + np.log(np.sqrt(2 * np.pi))
-
-def compute_ent_normal(logvar):
-    return 0.5 * (logvar + np.log(2 * np.pi * np.e))
-
-def compute_sparsity(mu, normed=True):
-    # assume couples, compute normalized sparsity
-    diff = mu[::2] - mu[1::2]
-    if normed:
-        norm = torch.norm(diff, dim=1, keepdim=True)
-        norm[norm == 0] = 1  # keep those that are same, dont divide by 0
-        diff = diff / norm
-    return torch.mean(torch.abs(diff))
-
-
 class AfflineVAESynthetic(pl.LightningModule):
 
     def __init__(
@@ -62,6 +46,7 @@ class AfflineVAESynthetic(pl.LightningModule):
         gamma=0.0075,
         lr=1e-4,
         diagonal=False,
+        bias=False,
         use_warm_start=False,
         spline_pth=None,
         decoder_dist='gaussian',
@@ -79,17 +64,22 @@ class AfflineVAESynthetic(pl.LightningModule):
                                            dout=z_dim,
                                            num_blocks=lag,
                                            diagonal=diagonal)
-
-        self.b = nn.Parameter(0.01 * torch.randn(1, z_dim))
+                                           
+        # Non-white noise: use learned bias to adjust
+        if bias:
+            self.b = nn.Parameter(0.001 * torch.randn(1, z_dim))
+        else:
+            self.register_buffer('b', torch.zeros((1, z_dim)))
 
         self.spline = ComponentWiseSpline(input_dim=z_dim,
                                           bound=bound,
                                           count_bins=count_bins,
                                           order=order)
         if use_warm_start:
-            self.spline.load_state_dict(torch.load(checkpoint_pth))
-            print("Load pretrained spline flow", flush=True)
+            self.spline.load_state_dict(torch.load(spline_pth, 
+                                        map_location=torch.device('cpu')))
 
+            print("Load pretrained spline flow", flush=True)
         self.lr = lr
         self.lag = lag
         self.beta = beta
@@ -226,15 +216,16 @@ class AfflineVAECNN(pl.LightningModule):
         nc,
         z_dim=10, 
         lag=1,
-        hidden_dim=128,
+        hidden_dim=256,
         bound=5,
         count_bins=8,
         order='linear',
         beta=0.0025,
         gamma=0.0075,
-        l1=0.0001,
+        l1=0.0,
         lr=1e-4,
         diagonal=True,
+        bias=False,
         use_warm_start=False,
         spline_pth=None,
         decoder_dist='bernoulli',
@@ -245,21 +236,26 @@ class AfflineVAECNN(pl.LightningModule):
         self.nc = nc
         
         self.net = BetaVAE_CNN(nc=nc, 
-                               z_dim=z_dim)
+                               z_dim=z_dim,
+                               hidden_dim=hidden_dim)
 
         self.trans_func = GroupLinearLayer(din=z_dim, 
                                            dout=z_dim,
                                            num_blocks=lag,
                                            diagonal=diagonal)
-
-        self.b = nn.Parameter(0.01 * torch.randn(1, z_dim))
+        # Non-white noise: use learned bias to adjust
+        if bias:
+            self.b = nn.Parameter(0.001 * torch.randn(1, z_dim))
+        else:
+            self.register_buffer('b', torch.zeros((1, z_dim)))
 
         self.spline = ComponentWiseSpline(input_dim=z_dim,
                                           bound=bound,
                                           count_bins=count_bins,
                                           order=order)
         if use_warm_start:
-            self.spline.load_state_dict(torch.load(checkpoint_pth))
+            self.spline.load_state_dict(torch.load(spline_pth, 
+                                        map_location=torch.device('cpu')))
             print("Load pretrained spline flow", flush=True)
 
         self.lr = lr
@@ -280,18 +276,17 @@ class AfflineVAECNN(pl.LightningModule):
 
     def forward(self, batch):
         xt, xt_ = batch["xt"], batch["xt_"]
-        batch_size, _, _  = xt.shape
+        batch_size, _, nc, h, w  = xt.shape
         x = torch.cat((xt, xt_), dim=1)
-        x = x.view(-1, self.input_dim)
+        x = x.view(-1, nc, h, w)
         return self.net(x)
 
     def training_step(self, batch, batch_idx):
         xt, xt_ = batch["xt"], batch["xt_"]
-        batch_size, _, _  = xt.shape
+        batch_size, _, nc, h, w  = xt.shape
         x = torch.cat((xt, xt_), dim=1)
-        x = x.view(-1, self.input_dim)
+        x = x.view(-1, nc, h, w)
         x_recon, mu, logvar, z = self.net(x)
-        
         # VAE ELBO loss: recon_loss + kld_loss
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
         mu = mu.view(batch_size, -1, self.z_dim)
@@ -336,11 +331,10 @@ class AfflineVAECNN(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         xt, xt_ = batch["xt"], batch["xt_"]
-        batch_size, _, _  = xt.shape
+        batch_size, _, nc, h, w  = xt.shape
         x = torch.cat((xt, xt_), dim=1)
-        x = x.view(-1, self.input_dim)
+        x = x.view(-1, nc, h, w)
         x_recon, mu, logvar, z = self.net(x)
-        
         # VAE ELBO loss: recon_loss + kld_loss
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
         mu = mu.view(batch_size, -1, self.z_dim)
@@ -367,15 +361,14 @@ class AfflineVAECNN(pl.LightningModule):
         q_laplace = D.Normal(mut_, torch.exp(logvart_ / 2))
         log_qz_laplace = q_laplace.log_prob(zt_)
         kld_laplace = torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace
-        kld_laplace = kld_laplace.mean()
-
+        kld_laplace = kld_laplace.mean()       
+        
         # L1 penalty to encourage sparcity in causal matrix
         l1_loss = 0
         for param in self.trans_func.parameters():
             l1_loss = l1_loss + torch.norm(param, 1)
 
         loss = (self.lag+1) * recon_loss + self.beta * kld_normal + self.gamma * kld_laplace + self.l1 * l1_loss
-
         # Compute Mean Correlation Coefficient
         zt_recon = mu[:,-1,:].T.detach().cpu().numpy()
         zt_true = batch["yt_"].squeeze().T.detach().cpu().numpy()
@@ -394,3 +387,12 @@ class AfflineVAECNN(pl.LightningModule):
         e = torch.randn(batch_size, self.z_dim).to(xt.device)
         eps, _ = self.spline.inverse(e)
         return eps
+
+    def reconstruct(self):
+        return self.forward(batch)[0]
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        # An scheduler is optional, but can help in flows to get the last bpd improvement
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 20, gamma=0.9)
+        return [optimizer], [scheduler]

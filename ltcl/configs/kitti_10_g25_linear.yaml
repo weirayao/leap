@@ -4,7 +4,9 @@
 
 ROOT: '/home/cmu_wyao/projects/data/'
 LOG: '/data/datasets/logs'
-DATASET: 'linear_nongaussian'
+DATASET: 'kitti'
+TRANSFORM: null
+DT: 15
 
 SPLINE:
     USE_WARM_START: TRUE
@@ -16,29 +18,30 @@ SPLINE:
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/home/cmu_wyao/spline.pth'
+    PATH: '/home/cmu_wyao/spline_10.pth'
   
 VAE:
-    GPU: [1]
+    GPU: [2]
     CPU: 8
-    TRAIN_BS: 128
+    TRAIN_BS: 64
     VAL_BS: 1280
     EPOCHS: 100
-    N_VAL_SAMPLES: 5000
-    LAG: 2
-    LR: 0.0005
-    BETA: 0.0025
-    GAMMA: 0.0075
-    INPUT_DIM: 8
-    LATENT_DIM: 8
+    N_VAL_SAMPLES: 1280
+    LAG: 1
+    LR: 0.001
+    BETA: 0.1
+    GAMMA: 25
+    L1: 0.1
+    NC: 1
+    LATENT_DIM: 10
     DIAG: FALSE
+    BIAS: FALSE # For non-white noise situations, enable bias
     ENC:
-        HIDDEN_DIM: 128
+        HIDDEN_DIM: 512
     DEC:
-        HIDDEN_DIM: 128
-        DIST: 'gaussian'
+        DIST: 'bernoulli'
     PIN: TRUE
 
 MCC:
-    FREQ: 0.1
-    CORR: 'Pearson'
+    FREQ: 0.5
+    CORR: 'Spearman'

@@ -3,12 +3,20 @@ import argparse
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
-from ltcl.modules.linear_vae import AfflineVAESynthetic
-from ltcl.datasets.sim_dataset import SimulationDataset
+from ltcl.modules.linear_vae import AfflineVAECNN
+from ltcl.datasets.kitti import KittiMasks
 from ltcl.tools.utils import load_yaml
+from pytorch_lightning.callbacks import Callback
 
 from train_spline import pretrain_spline
 import os, pwd, yaml
+
+
+class MyPrintingCallback(Callback):
+
+    def on_train_batch_end(self, trainer):
+        
+        print('Starting to init trainer!')
 
 def main(args):
 
@@ -31,12 +39,15 @@ def main(args):
             pretrain_spline(args.exp)
             print('Done!')
 
-    data = SimulationDataset(directory=cfg['ROOT'], 
-                             transition=cfg['DATASET'])
+    data = KittiMasks(path = os.path.join(cfg['ROOT'], cfg['DATASET']), 
+                      transform = cfg['TRANSFORM'],
+                      max_delta_t = cfg['DT'])
 
     num_validation_samples = cfg['VAE']['N_VAL_SAMPLES']
 
     train_data, val_data = random_split(data, [len(data)-num_validation_samples, num_validation_samples])
+    # Disable augmentation in validation set
+    val_data.dataset.transform = None
 
     train_loader = DataLoader(train_data, 
                               batch_size=cfg['VAE']['TRAIN_BS'], 
@@ -51,21 +62,23 @@ def main(args):
                             num_workers=cfg['VAE']['CPU'],
                             shuffle=False)
 
-    model = AfflineVAESynthetic(input_dim=cfg['VAE']['INPUT_DIM'],
-                                z_dim=cfg['VAE']['LATENT_DIM'], 
-                                lag=cfg['VAE']['LAG'],
-                                hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
-                                bound=cfg['SPLINE']['BOUND'],
-                                count_bins=cfg['SPLINE']['BINS'],
-                                order=cfg['SPLINE']['ORDER'],
-                                beta=cfg['VAE']['BETA'],
-                                gamma=cfg['VAE']['GAMMA'],
-                                lr=cfg['VAE']['LR'],
-                                diagonal=cfg['VAE']['DIAG'],
-                                use_warm_start=cfg['SPLINE']['USE_WARM_START'],
-                                spline_pth=cfg['SPLINE']['PATH'],
-                                decoder_dist=cfg['VAE']['DEC']['DIST'],
-                                correlation=cfg['MCC']['CORR'])
+    model = AfflineVAECNN(nc=cfg['VAE']['NC'],
+                          z_dim=cfg['VAE']['LATENT_DIM'], 
+                          lag=cfg['VAE']['LAG'],
+                          hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
+                          bound=cfg['SPLINE']['BOUND'],
+                          count_bins=cfg['SPLINE']['BINS'],
+                          order=cfg['SPLINE']['ORDER'],
+                          beta=cfg['VAE']['BETA'],
+                          gamma=cfg['VAE']['GAMMA'],
+                          l1=cfg['VAE']['L1'],
+                          lr=cfg['VAE']['LR'],
+                          diagonal=cfg['VAE']['DIAG'],
+                          bias=cfg['VAE']['BIAS'],
+                          use_warm_start=cfg['SPLINE']['USE_WARM_START'],
+                          spline_pth=cfg['SPLINE']['PATH'],
+                          decoder_dist=cfg['VAE']['DEC']['DIST'],
+                          correlation=cfg['MCC']['CORR'])
 
     log_dir = os.path.join(cfg["LOG"], current_user, args.exp)
 

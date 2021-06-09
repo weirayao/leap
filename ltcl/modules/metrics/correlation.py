@@ -3,6 +3,7 @@
 """
 import numpy as np
 import scipy as sp
+import scipy.stats as stats
 from .munkres import Munkres
 
 def correlation(x, y, method='Pearson'):
@@ -28,7 +29,7 @@ def correlation(x, y, method='Pearson'):
         corr = np.corrcoef(y, x)
         corr = corr[0:dim,dim:]
     elif method=='Spearman':
-        corr, pvalue = sp.stats.spearmanr(y.T, x.T)
+        corr, pvalue = stats.spearmanr(y.T, x.T)
         corr = corr[0:dim, dim:]
 
     # Sort ----------------------------------------------------
@@ -46,7 +47,7 @@ def correlation(x, y, method='Pearson'):
         corr_sort = np.corrcoef(y, x_sort)
         corr_sort = corr_sort[0:dim,dim:]
     elif method=='Spearman':
-        corr_sort, pvalue = sp.stats.spearmanr(y.T, x_sort.T)
+        corr_sort, pvalue = stats.spearmanr(y.T, x_sort.T)
         corr_sort = corr_sort[0:dim, dim:]
 
     return corr_sort, sort_idx, x_sort
