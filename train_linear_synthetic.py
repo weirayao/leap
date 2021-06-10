@@ -62,6 +62,7 @@ def main(args):
                                 gamma=cfg['VAE']['GAMMA'],
                                 lr=cfg['VAE']['LR'],
                                 diagonal=cfg['VAE']['DIAG'],
+                                bias=cfg['VAE']['BIAS'],
                                 use_warm_start=cfg['SPLINE']['USE_WARM_START'],
                                 spline_pth=cfg['SPLINE']['PATH'],
                                 decoder_dist=cfg['VAE']['DEC']['DIST'],

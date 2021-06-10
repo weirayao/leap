@@ -64,7 +64,7 @@ class AfflineVAESynthetic(pl.LightningModule):
                                            dout=z_dim,
                                            num_blocks=lag,
                                            diagonal=diagonal)
-                                           
+
         # Non-white noise: use learned bias to adjust
         if bias:
             self.b = nn.Parameter(0.001 * torch.randn(1, z_dim))
