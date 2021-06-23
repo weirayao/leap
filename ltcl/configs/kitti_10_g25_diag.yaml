@@ -2,7 +2,7 @@
 # Model Configurations  #
 #########################
 
-ROOT: '/home/cmu_wyao/projects/data/'
+ROOT: '/data/datasets/logs/cmu_wyao/data'
 LOG: '/data/datasets/logs'
 DATASET: 'kitti'
 TRANSFORM: null
@@ -15,6 +15,7 @@ SPLINE:
     LR: 0.001
     CUDA: TRUE
     BS: 64
+    LATENT_DIM: 10
     BOUND: 5
     BINS: 8
     ORDER: 'linear'

@@ -17,6 +17,18 @@ class InputOutsideDomain(Exception):
     """Exception to be thrown when the input to a transform is not within its domain."""
     pass
 
+class Namespace(object):
+    """Converts dict to class attributes as Argparse"""
+    def __init__(self, **kwds):
+        self.__dict__.update(kwds)
+    def __repr__(self):
+        items = list(self.__dict__.items())
+        temp = []
+        for name, value in items:
+            if not name.startswith('_'):
+                temp.append('%s=%r' % (name, value))
+        temp.sort()
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(temp))
 
 class GroupLinearLayer(nn.Module):
     """GroupLinearLayer computes N dinstinct linear transformations at once"""

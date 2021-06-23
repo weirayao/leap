@@ -1,0 +1,39 @@
+# Data Generation Configuration File for Ball Dataset
+root_dir: '/data/datasets/logs/cmu_wyao/data'
+dataf: 'physics_ball_5_s1'
+env: 'Ball'
+data_names: ['attrs', 'states', 'actions', 'rels']
+n_ball: 5
+# Number of episodes
+n_rollout: 1
+frame_offset: 1
+# Number of time steps in one rollout
+time_step: 250000
+# Step size 0.02 s
+dt: 0.02
+train_valid_ratio: 0.8
+# radius
+attr_dim: 1
+# x, y, xdot, ydot
+state_dim: 4
+# ddx, ddy
+action_dim: 2
+# none, spring, rod
+relation_dim: 3
+
+# size of the latent causal graph
+node_attr_dim: 0
+edge_attr_dim: 1
+edge_type_num: 3
+
+height_raw: 110
+width_raw: 110
+height: 64
+width: 64
+scale_size: 64
+crop_size: 64
+
+lim: [-1., 1., -1., 1.]
+
+# CPU
+num_workers: 1

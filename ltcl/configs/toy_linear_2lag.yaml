@@ -2,7 +2,7 @@
 # Model Configurations  #
 #########################
 
-ROOT: '/home/cmu_wyao/projects/data/'
+ROOT: '/data/datasets/logs/cmu_wyao/data'
 LOG: '/data/datasets/logs'
 DATASET: 'linear_nongaussian'
 
@@ -13,10 +13,11 @@ SPLINE:
     LR: 0.001
     CUDA: FALSE
     BS: 64
+    LATENT_DIM: 8
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/home/cmu_wyao/spline.pth'
+    PATH: '/home/cmu_wyao/spline_8.pth'
   
 VAE:
     GPU: [1]

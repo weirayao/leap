@@ -10,7 +10,7 @@ def pretrain_spline(cfg_name):
     cfg = load_yaml(os.path.join('./ltcl/configs', 
                                  '%s.yaml'%cfg_name))
     batch_size = cfg['SPLINE']['BS']
-    latent_size = cfg['VAE']['LATENT_DIM']
+    latent_size = cfg['SPLINE']['LATENT_DIM']
     bound = cfg['VAE']['LATENT_DIM']
     use_cuda = cfg['SPLINE']['CUDA']
     device = torch.device("cuda:0" if use_cuda else "cpu")
