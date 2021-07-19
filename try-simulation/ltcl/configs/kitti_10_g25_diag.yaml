@@ -1,0 +1,48 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/data/datasets/logs/cmu_wyao/data'
+LOG: '/data/datasets/logs'
+DATASET: 'kitti'
+TRANSFORM: null
+DT: 15
+
+SPLINE:
+    USE_WARM_START: TRUE
+    TYPE: 'laplacian'
+    STEPS: 5000
+    LR: 0.001
+    CUDA: TRUE
+    BS: 64
+    LATENT_DIM: 10
+    BOUND: 5
+    BINS: 8
+    ORDER: 'linear'
+    PATH: '/home/cmu_wyao/spline_10.pth'
+  
+VAE:
+    GPU: [2]
+    CPU: 8
+    TRAIN_BS: 64
+    VAL_BS: 1280
+    EPOCHS: 100
+    N_VAL_SAMPLES: 5000
+    LAG: 1
+    LR: 0.001
+    BETA: 0.1
+    GAMMA: 25
+    L1: 0.0000
+    NC: 1
+    LATENT_DIM: 10
+    DIAG: TRUE
+    BIAS: FALSE # For non-white noise situations, enable bias
+    ENC:
+        HIDDEN_DIM: 512
+    DEC:
+        DIST: 'bernoulli'
+    PIN: FALSE
+
+MCC:
+    FREQ: 0.5
+    CORR: 'Spearman'
