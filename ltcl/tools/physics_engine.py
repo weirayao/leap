@@ -8,7 +8,7 @@ import matplotlib as mpl
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle, Circle, Polygon
 
-from .utils import rand_float, rand_int, calc_dis, norm
+from ltcl.tools.utils import rand_float, rand_int, calc_dis, norm
 
 import ipdb as pdb
 
@@ -196,7 +196,7 @@ class BallEngine(Engine):
         self.n_rel_type = 3
         self.n_ball = n_ball
         self.mass = 1.
-        self.radius = 6
+        self.radius = 12
         self.balls = []
         # self.add_segments()
         self.add_balls()
@@ -204,7 +204,6 @@ class BallEngine(Engine):
 
         if init_impulse:
             self.add_impulse()
-
         self.state_prv = None
 
     @property
@@ -238,7 +237,7 @@ class BallEngine(Engine):
         self.space.step(self.dt)
 
     def render(self, states, actions, param, video=True, image=False, path=None, draw_edge=True,
-               lim=(-80, 80, -80, 80), verbose=True, st_idx=0, image_prefix='fig'):
+               lim=(-100, 100, -100, 100), verbose=True, st_idx=0, image_prefix='fig'):
         # states: time_step x n_ball x 4
         # actions: time_step x 2
 
@@ -258,7 +257,7 @@ class BallEngine(Engine):
             command = 'mkdir -p %s' % image_path
             os.system(command)
 
-        c = ['royalblue', 'tomato', 'limegreen', 'orange', 'violet', 'chocolate', 'black', 'crimson']
+        c = ['red', 'blue', 'green', 'yellow', 'cyan']
 
         time_step = states.shape[0]
         n_ball = states.shape[1]
@@ -313,7 +312,7 @@ class BallEngine(Engine):
                 frame = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
                 frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (3,))
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                frame = frame[21:-19, 21:-19]
+                # frame = frame[21:-19, 21:-19]
 
             if video:
                 out.write(frame)

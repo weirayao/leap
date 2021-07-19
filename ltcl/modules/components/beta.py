@@ -131,23 +131,22 @@ class BetaVAE_Physics(nn.Module):
 
         # Visual Encoder Modules
         self.encoder = nn.Sequential(
-            nn.Conv2d(nc * 2 + 2, 32, 4, 2, 1),          # B,  32, 32, 32
-            nn.BatchNorm2d(32),
+            nn.Conv2d(nc * 2 + 2, 16, 4, 2, 1),          # B,  32, 32, 32
+            nn.BatchNorm2d(16),
             nn.ReLU(True),
-            nn.Conv2d(32, 32, 4, 2, 1),          # B,  32, 16, 16
+            nn.Conv2d(16, 32, 4, 2, 1),          # B,  32, 16, 16
             nn.BatchNorm2d(32),
             nn.ReLU(True),
             nn.Conv2d(32, 64, 4, 2, 1),          # B,  64,  8,  8
             nn.BatchNorm2d(64),
             nn.ReLU(True),
-            nn.Conv2d(64, 64, 4, 2, 1),          # B,  64,  4,  4
-            nn.BatchNorm2d(64),
+            nn.Conv2d(64, 128, 4, 2, 1),          # B,  64,  4,  4
+            nn.BatchNorm2d(128),
             nn.ReLU(True),
-            nn.Conv2d(64, hidden_dim, 4, 1),            # B, hidden_dim,  1,  1
-            nn.BatchNorm2d(hidden_dim),
+            nn.Conv2d(128, 256, 4, 1),            # B, hidden_dim,  1,  1
+            nn.BatchNorm2d(256),
             nn.ReLU(True),
-            View((-1, hidden_dim*1*1)),                 # B, hidden_dim
-            nn.Linear(hidden_dim, 32),             # B, z_dim*2
+            View((-1, 256*1*1))                 # B, hidden_dim
         )
         # self.conv1 = nn.Conv2d(nc * 2 + 2, 16, 3, padding=1)
         # self.conv2 = nn.Conv2d(16, 16, 3, padding=1)
@@ -155,7 +154,7 @@ class BetaVAE_Physics(nn.Module):
         # self.conv4 = nn.Conv2d(16, 32, 3, padding=1)
         # self.conv5 = nn.Conv2d(32, 32, 3, padding=1)
         # shared linear layer to get pair codes of shape N_obj*cl
-        self.fc1 = nn.Linear(32, n_obj * z_dim)
+        self.fc1 = nn.Linear(256, n_obj * z_dim)
         # shared MLP to encode pairs of pair codes as state codes N_obj*cl
         self.fc2 = nn.Linear(z_dim * 2, z_dim)
         self.fc3 = nn.Linear(z_dim, 2 * z_dim)
@@ -164,25 +163,25 @@ class BetaVAE_Physics(nn.Module):
         self.dconv = nn.Linear(z_dim, 3 * z_dim)
 
         # Shared Object Renderer
-        # self.renderer = ConvDecoder(z_dim * n_obj)
-        self.renderer = nn.Sequential(
-            nn.Linear(z_dim * n_obj, hidden_dim),               # B, hidden_dim
-            View((-1, hidden_dim, 1, 1)),               # B, hidden_dim,  1,  1
-            nn.ReLU(True),
-            nn.ConvTranspose2d(hidden_dim, 64, 4),      # B,  64,  4,  4
-            nn.BatchNorm2d(64),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(64, 64, 4, 2, 1), # B,  64,  8,  8
-            nn.BatchNorm2d(64),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(64, 32, 4, 2, 1), # B,  32, 16, 16
-            nn.BatchNorm2d(32),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(32, 32, 4, 2, 1), # B,  32, 32, 32
-            nn.BatchNorm2d(32),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(32, nc, 4, 2, 1),  # B, nc, 64, 64
-        )
+        self.renderer = ConvDecoder(z_dim * n_obj)
+        # self.renderer = nn.Sequential(
+        #     nn.Linear(z_dim * n_obj, hidden_dim),               # B, hidden_dim
+        #     View((-1, hidden_dim, 1, 1)),               # B, hidden_dim,  1,  1
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(hidden_dim, 64, 4),      # B,  64,  4,  4
+        #     nn.BatchNorm2d(64),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(64, 64, 4, 2, 1), # B,  64,  8,  8
+        #     nn.BatchNorm2d(64),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(64, 32, 4, 2, 1), # B,  32, 16, 16
+        #     nn.BatchNorm2d(32),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(32, 32, 4, 2, 1), # B,  32, 32, 32
+        #     nn.BatchNorm2d(32),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(32, nc, 4, 2, 1),  # B, nc, 64, 64
+        # )
 
         self.smoother = nn.Conv2d(3, 3, kernel_size=1, stride=1, bias=True)
 

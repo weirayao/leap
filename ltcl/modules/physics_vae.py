@@ -230,7 +230,7 @@ class PhysicsVAE(pl.LightningModule):
     
     def sample(self, xt):
         batch_size = xt.shape[0]
-        e = torch.randn(batch_size, self.z_dim).to(xt.device)
+        e = torch.randn(batch_size, self.z_dim * self.n_obj).to(xt.device)
         eps, _ = self.spline.inverse(e)
         return eps
 

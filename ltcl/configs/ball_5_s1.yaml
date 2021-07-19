@@ -4,11 +4,13 @@ dataf: 'physics_ball_5_s1'
 env: 'Ball'
 data_names: ['attrs', 'states', 'actions', 'rels']
 n_ball: 5
+nonstationary: FALSE
+mode: 'mask'
 # Number of episodes
-n_rollout: 1
+n_rollout: 5000
 frame_offset: 1
 # Number of time steps in one rollout
-time_step: 250000
+time_step: 100
 # Step size 0.02 s
 dt: 0.02
 train_valid_ratio: 0.8
@@ -34,6 +36,5 @@ scale_size: 64
 crop_size: 64
 
 lim: [-1., 1., -1., 1.]
-
 # CPU
 num_workers: 1

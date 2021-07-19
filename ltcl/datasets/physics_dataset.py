@@ -15,6 +15,7 @@ from PIL import Image
 import cv2
 import numpy as np
 import imageio
+import pickle
 import scipy.misc
 import torch
 from tqdm import tqdm
@@ -105,6 +106,7 @@ def gen_Ball(info):
     n_rollout, time_step = info['n_rollout'], info['time_step']
     dt, video, args, phase = info['dt'], info['video'], info['args'], info['phase']
     n_ball = info['n_ball']
+    ns =  info['nonstationary']
 
     np.random.seed(round(time.time() * 1000 + thread_idx) % 2 ** 32)
 
@@ -116,12 +118,18 @@ def gen_Ball(info):
 
     engine = BallEngine(dt, state_dim, action_dim=2)
 
+    if not ns:
+        param_load = np.load('/data/datasets/logs/cmu_wyao/data/rels.npy')
+
     for i in tqdm(range(n_rollout)):
         rollout_idx = thread_idx * n_rollout + i
         rollout_dir = os.path.join(data_dir, str(rollout_idx))
         os.system('mkdir -p ' + rollout_dir)
-
-        engine.init(n_ball)
+        if ns:
+            engine.init(n_ball)
+        else:
+            # Use the same relations for every episode
+            engine.init(n_ball, param_load=param_load)
 
         n_obj = engine.num_obj
         attrs_all = np.zeros((time_step, n_obj, attr_dim))
@@ -147,7 +155,8 @@ def gen_Ball(info):
             states_all[j, :, :vel_dim] = pos
             states_all[j, :, vel_dim:] = vel
             rel_attrs_all[j] = engine.param
-            act += np.random.laplace(loc=0.0, scale=0.5, size=(5,2)) * 300 - act * 0.1 - state[:, 2:] * 0.1
+            act = np.random.laplace(loc=0.0, scale=1, size=(5,2)) * 30 
+            # act += np.random.laplace(loc=0.0, scale=0.5, size=(5,2)) * 300 - act * 0.1 - state[:, 2:] * 0.1
             # act += (np.random.rand(n_obj, 2) - 0.5) * 600 - act * 0.1 - state[:, 2:] * 0.1
             act = np.clip(act, -1000, 1000)
             engine.step(act)
@@ -290,6 +299,11 @@ class PhysicsDataset(Dataset):
         self.T = self.args.time_step
         self.scale_size = args.scale_size
         self.crop_size = args.crop_size
+        # K-means semantic segmentation
+        self.mode = args.mode
+        assert self.mode in ('rgb', 'mask')
+        with open("/home/cmu_wyao/kmeans_segmenter.pkl", "rb") as f:
+            self.segmenter = pickle.load(f)
 
     def load_data(self):
         self.stat = load_data(self.data_names, self.stat_path)
@@ -304,6 +318,7 @@ class PhysicsDataset(Dataset):
         for i in range(self.args.num_workers):
             info = {'thread_idx': i,
                     'data_dir': self.data_dir,
+                    'nonstationary': self.args.nonstationary,
                     'data_names': self.data_names,
                     'n_rollout': n_rollout // self.args.num_workers,
                     'time_step': time_step,
@@ -369,6 +384,7 @@ class PhysicsDataset(Dataset):
         used for dynamics modeling
         '''
         imgs = []
+        arrs = []
         data_path = os.path.join(self.data_dir, str(src_rollout) + '.h5')
         metadata = load_data(self.data_names, data_path)
         # load images for dynamics prediction
@@ -376,9 +392,15 @@ class PhysicsDataset(Dataset):
             path = os.path.join(self.data_dir, str(src_rollout), 'fig_%d%s' % (src_timestep + i, suffix))
             img = self.loader(path)
             img = resize_and_crop(self.phase, img, self.scale_size, self.crop_size)
+            arr = np.array(img).reshape(-1,3)
+            arrs.append(arr)
             img = self.trans_to_tensor(img)
             imgs.append(img)
-
+        arrs = np.concatenate(arrs, axis=0)
+        labels = self.segmenter.predict(arrs).reshape(4, self.crop_size, self.crop_size)
+        masks = torch.nn.functional.one_hot(torch.LongTensor(labels))
+        # Remove background
+        masks = masks[0,:,:,1:]
         imgs = torch.stack(imgs, 0)
         
         # get ground truth edge type
@@ -408,4 +430,7 @@ class PhysicsDataset(Dataset):
         actions = actions[src_timestep:src_timestep + 4]
         actions = torch.FloatTensor(actions)
 
-        return imgs, kps_gt, graph_gt, actions
+        if self.mode == 'rgb':
+            return imgs, kps_gt, graph_gt, actions
+        elif self.mode == 'mask':
+            return masks, kps_gt, graph_gt, actions
