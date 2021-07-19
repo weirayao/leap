@@ -130,25 +130,15 @@ class Inference_Net(nn.Module):
         for i in range(beta.shape[1]):
             if i == 0:
                 input = torch.cat([init[:,i,:], init[:,i,:], beta[:,i,:]], dim=1)
-                mu1 = self.mu_sample(input)
-                sigma1 = self.var_sample(input)
-                latent1 = self.sample_latent(mu1, sigma1, sample)
-                latent.append(latent1)
-                mu.append(mu1); sigma.append(sigma1)
             elif i == 1:
                 input = torch.cat([init[:,i,:], latent[-1], beta[:,i,:]], dim=1)
-                mu2 = self.mu_sample(input)
-                sigma2 = self.var_sample(input)
-                latent2 = self.sample_latent(mu2, sigma2, sample)
-                latent.append(latent2)
-                mu.append(mu2); sigma.append(sigma2)
             else:
                 input = torch.cat([latent[-2], latent[-1], beta[:,i,:]], dim=1)
-                mut = self.mu_sample(input)
-                sigmat = self.var_sample(input)
-                latentt = self.sample_latent(mut, sigmat, sample)
-                latent.append(latentt)
-                mu.append(mut); sigma.append(sigmat)
+            mut = self.mu_sample(input)
+            sigmat = self.var_sample(input)
+            latentt = self.sample_latent(mut, sigmat, sample)
+            latent.append(latentt)
+            mu.append(mut); sigma.append(sigmat)
         
         latent = torch.squeeze(torch.stack(latent, dim=1))
         mu = torch.squeeze(torch.stack(mu, dim=1))
