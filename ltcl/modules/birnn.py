@@ -1,7 +1,8 @@
-# Input: `{f_i}_i=1^T`: [BS, len = T, dim = 8]
-# Output: `{z_i}_i=1^T`: [BS, len = T, dim = 8]
+# Require: input_dim, z_dim, hidden_dim
+# Input: {f_i}_i=1^T: [BS, len=T, dim=8]
+# Output: {z_i}_i=1^T: [BS, len=T, dim=8]
 # Bidirectional GRU/LSTM (1 layer)
-# Sequential sampling & reparametrize
+# Sequential sampling & reparameterization
 
 import pyro
 import torch
@@ -14,10 +15,6 @@ import pyro.distributions as dist
 from collections import defaultdict
 from torch.autograd import Variable
 
-def reparametrize(mu, logvar):
-    std = logvar.div(2).exp()
-    eps = Variable(std.data.new(std.size()).normal_())
-    return mu + std*eps
 
 def kaiming_init(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):
@@ -39,13 +36,6 @@ def normal_init(m, mean, std):
         if m.bias.data is not None:
             m.bias.data.zero_()
 
-class View(nn.Module):
-    def __init__(self, size):
-        super(View, self).__init__()
-        self.size = size
-
-    def forward(self, tensor):
-        return tensor.view(self.size)
 
 class Inference_Net(nn.Module):
     def __init__(self, input_dim=8, z_dim=8, hidden_dim=128):
@@ -53,8 +43,11 @@ class Inference_Net(nn.Module):
         self.z_dim = z_dim
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
+
+        self.lstm = nn.LSTM(z_dim, z_dim, num_layers=1, batch_first=True, bidirectional=True)
+        self.gru = nn.GRU(z_dim, z_dim, num_layers=1, batch_first=True, bidirectional=True)
         '''
-        # 1. encoder & decoder parts
+        # 1. encoder & decoder (weiran parts)
         # input: {xi}_{i=1}^T; output: {fi}_{i=1}^T
         # input: {zi}_{i=1}^T; output: {recon_xi}_{i=1}^T
 
@@ -77,13 +70,22 @@ class Inference_Net(nn.Module):
                                        nn.Linear(hidden_dim, input_dim)
                                     )
         '''
-        self.encode_rnn = nn.LSTM(input_dim + z_dim, z_dim, num_layers=1, batch_first=True)
-        self.predict_rnn = nn.LSTM(z_dim*2, z_dim, num_layers=1, batch_first=True)
-        self.decode_rnn = nn.LSTM(z_dim*2, z_dim, num_layers=1, batch_first=True)
-
-        # Beta
-        self.beta_mu_layer = nn.Linear(z_dim, z_dim)
-        self.beta_sigma_layer = nn.Linear(z_dim, z_dim)
+        self.mu_sample = nn.Sequential(
+                                       nn.Linear(3*z_dim, hidden_dim),
+                                       nn.LeakyReLU(0.2),
+                                       nn.Linear(hidden_dim, hidden_dim),
+                                       nn.LeakyReLU(0.2),
+                                       nn.Linear(hidden_dim, z_dim),
+                                       nn.LeakyReLU(0.2)
+                                    )
+        self.var_sample = nn.Sequential(
+                                       nn.Linear(3*z_dim, hidden_dim),
+                                       nn.LeakyReLU(0.2),
+                                       nn.Linear(hidden_dim, hidden_dim),
+                                       nn.LeakyReLU(0.2),
+                                       nn.Linear(hidden_dim, z_dim),
+                                       nn.Softmax(0.2),
+                                    )
 
     def weight_init(self):
         for block in self._modules:
@@ -101,73 +103,63 @@ class Inference_Net(nn.Module):
             return mu.contiguous()
 
     def sample_latent(self, mu, sigma, sample):
-        latent = []
-        for i in range(mu.shape[1]):
-            input_beta = self.pyro_sample('input_beta', dist.Normal, mu[:,i,:], sigma[:,i,:], sample)
-            beta = input_beta.view(-1, 1, self.z_dim)
-            latent.append(beta)
-        
-        latent = torch.stack(latent, dim=1).view(mu.shape[0], -1, self.z_dim)
+        latent = self.pyro_sample('input_beta', dist.Normal, mu, sigma, sample).view(-1, self.z_dim)
         return latent
 
-    def forward(self, xt, lag, sample=True):
-        # encoder
-        _, length, latent_dim  = xt.shape
-        xt = self.encoder(xt.view(-1, latent_dim))
-        xt = xt.view(-1, length, latent_dim)
-        ## lstm encoder
-        encoder_outputs, hidden_states = self._encode(xt, lag)
-        ## lstm decoder
-        pred_outputs, pred_beta_mu, pred_beta_sigma = self._decode(encoder_outputs, hidden_states)
-        ## sample latent
-        mu = pred_beta_mu
-        sigma = pred_beta_sigma
-        latent = self.sample_latent(mu, sigma, sample)
-        # decoder
-        decoded_output = self.decoder(latent)
-        return decoded_output, mu, sigma, latent
-        
-    def _encode(self, xt, lag):
+    def forward(self, ft, sample=True):
+        ''' 
+        ## encoder (weiran part)
+        # input: xt(batch, seq_len, z_dim)
+        # output: ft(seq_len, batch, z_dim)
+        _, length, _  = xt.shape
+        ft = self.encoder(xt.view(-1, self.z_dim))
+        ft = ft.view(-1, length, self.z_dim)
+        '''
+
+        ## bidirectional lstm/gru 
+        # input: ft(seq_len, batch, z_dim)
+        # output: beta(batch, seq_len, z_dim)
         hidden = None
-        frame_outputs = []
-        hidden_states = []
-        encoder_outputs = [] 
-        batch_size, length, latent_dim  = xt.shape
-        prev_hidden = Variable(torch.zeros(batch_size, 1, latent_dim).cuda())
+        beta, hidden = self.lstm(ft, hidden)
+        # beta, hidden = self.gru(ft, hidden)
+        
+        ## sequential sampling & reparametrization
+        ## transition: p(zt|z_tau)
+        latent = []; mu = []; sigma = []
+        init = torch.zeros(beta.shape)
+        for i in range(beta.shape[1]):
+            if i == 0:
+                input = torch.cat([init[:,i,:], init[:,i,:], beta[:,i,:]], dim=1)
+                mu1 = self.mu_sample(input)
+                sigma1 = self.var_sample(input)
+                latent1 = self.sample_latent(mu1, sigma1, sample)
+                latent.append(latent1)
+                mu.append(mu1); sigma.append(sigma1)
+            elif i == 1:
+                input = torch.cat([init[:,i,:], latent[-1], beta[:,i,:]], dim=1)
+                mu2 = self.mu_sample(input)
+                sigma2 = self.var_sample(input)
+                latent2 = self.sample_latent(mu2, sigma2, sample)
+                latent.append(latent2)
+                mu.append(mu2); sigma.append(sigma2)
+            else:
+                input = torch.cat([latent[-2], latent[-1], beta[:,i,:]], dim=1)
+                mut = self.mu_sample(input)
+                sigmat = self.var_sample(input)
+                latentt = self.sample_latent(mut, sigmat, sample)
+                latent.append(latentt)
+                mu.append(mut); sigma.append(sigmat)
+        
+        latent = torch.squeeze(torch.stack(latent, dim=1))
+        mu = torch.squeeze(torch.stack(mu, dim=1))
+        sigma = torch.squeeze(torch.stack(sigma, dim=1))
 
-        for i in range(length):
-            rnn_input = torch.cat([xt[:, i:i+1, :], prev_hidden], dim=2)
-            output, hidden = self.encode_rnn(rnn_input, hidden)
-            h = hidden[0]; c= hidden[1]
-            prev_hidden= h.view(batch_size, 1, -1)
-            frame_outputs.append(output)
-            hidden_states.append((h, c))
-          
-        encoder_outputs = torch.squeeze(torch.stack(frame_outputs, dim=1))
+        '''
+        ## decoder (weiran part)
+        # input: latent(batch, seq_len, z_dim)
+        # output: recon_xt(batch, seq_len, z_dim)
+        recon_xt = self.decoder(latent.view(-1, self.z_dim))
+        recon_xt = recon_xt.view(-1, length, self.z_dim)
+        '''
 
-        return encoder_outputs, hidden_states
-
-    def _decode(self, encoder_outputs, hidden_states):
-        pred_outputs = []
-        frame_outputs = []
-        hidden_states.reverse()
-        pred_beta_mu, pred_beta_sigma = None, None
-        batch_size, len, latent_dim  = encoder_outputs.shape
-        encoder_outputs = torch.flip(encoder_outputs, dims=[1])
-        prev_hidden = Variable(torch.zeros(batch_size, 1, latent_dim).cuda())
-
-        for i in range(len):
-            hidden = hidden_states[i]
-            prev_outputs = encoder_outputs[:, i:i+1, :]
-            rnn_input = torch.cat([prev_outputs, prev_hidden], dim=2)
-            output, hidden = self.predict_rnn(rnn_input, hidden)
-            prev_hidden= hidden[0].view(batch_size, 1, -1)
-            frame_outputs.append(output)
-        # pdb.set_trace()
-        pred_outputs = torch.flip(torch.squeeze(torch.stack(frame_outputs, dim=1)), dims=[1])
-
-        pred_beta_mu = self.beta_mu_layer(pred_outputs)
-        pred_beta_sigma = self.beta_sigma_layer(pred_outputs)
-        pred_beta_sigma = F.softplus(pred_beta_sigma)
-
-        return pred_outputs, pred_beta_mu, pred_beta_sigma
+        return latent, mu, sigma
