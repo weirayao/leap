@@ -1,4 +1,4 @@
-# Require: input_dim, z_dim, hidden_dim
+# Require: input_dim, z_dim, hidden_dim, lag
 # Input: {f_i}_i=1^T: [BS, len=T, dim=8]
 # Output: {z_i}_i=1^T: [BS, len=T, dim=8]
 # Bidirectional GRU/LSTM (1 layer)
@@ -38,8 +38,9 @@ def normal_init(m, mean, std):
 
 
 class Inference_Net(nn.Module):
-    def __init__(self, input_dim=8, z_dim=8, hidden_dim=128):
+    def __init__(self, input_dim=8, z_dim=8, hidden_dim=128, lag=2):
         super(Inference_Net, self).__init__()
+        self.lag = lag
         self.z_dim = z_dim
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -92,19 +93,14 @@ class Inference_Net(nn.Module):
             for m in self._modules[block]:
                 kaiming_init(m)
 
-    def pyro_sample(self, name, fn, mu, sigma, sample=True):
-        '''
-        Sample with pyro.sample. fn should be dist.Normal.
-        If sample is False, then return mean.
-        '''
+    def sample_latent(self, mu, sigma, sample):
         if sample:
-            return pyro.sample(name, fn(mu, sigma))
+            std = sigma.div(2).exp()
+            eps = Variable(std.data.new(std.size()).normal_())
+            latent = mu + eps*std
+            return latent
         else:
             return mu.contiguous()
-
-    def sample_latent(self, mu, sigma, sample):
-        latent = self.pyro_sample('input_beta', dist.Normal, mu, sigma, sample).view(-1, self.z_dim)
-        return latent
 
     def forward(self, ft, sample=True):
         ''' 
@@ -127,13 +123,15 @@ class Inference_Net(nn.Module):
         ## transition: p(zt|z_tau)
         latent = []; mu = []; sigma = []
         init = torch.zeros(beta.shape)
+        for i in range(self.lag):
+            latent.append(init[:,i,:])
+
         for i in range(beta.shape[1]):
-            if i == 0:
-                input = torch.cat([init[:,i,:], init[:,i,:], beta[:,i,:]], dim=1)
-            elif i == 1:
-                input = torch.cat([init[:,i,:], latent[-1], beta[:,i,:]], dim=1)
-            else:
-                input = torch.cat([latent[-2], latent[-1], beta[:,i,:]], dim=1)
+            mid = torch.cat([latent[-self.lag], latent[-self.lag+1]], dim=1)
+            for j in range(1, self.lag-1): # assert self.lag > 1
+                mid = torch.cat([mid, latent[-self.lag+j+1]], dim=1)
+            input = torch.cat([mid, beta[:,i,:]], dim=1)       
+
             mut = self.mu_sample(input)
             sigmat = self.var_sample(input)
             latentt = self.sample_latent(mut, sigmat, sample)
