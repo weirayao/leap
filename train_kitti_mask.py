@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, random_split
 
 from ltcl.modules.linear_vae import AfflineVAECNN
 from ltcl.datasets.kitti import KittiMasks
-from ltcl.tools.utils import load_yaml
+from ltcl.tools.utils import load_yaml, setup_seed
 from pytorch_lightning.callbacks import Callback
 
 from train_spline import pretrain_spline
@@ -32,6 +32,8 @@ def main(args):
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
 
+    setup_seed(cfg['SEED'])
+    
     # Warm-start spline
     if cfg['SPLINE']['USE_WARM_START']:
         if not os.path.exists(cfg['SPLINE']['PATH']):
@@ -99,4 +101,5 @@ if __name__ == "__main__":
         type=str
     )
     args = argparser.parse_args()
+    torch.cuda.empty_cache()
     main(args)

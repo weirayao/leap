@@ -44,3 +44,5 @@ VAE:
 MCC:
     FREQ: 0.1
     CORR: 'Pearson'
+
+SEED: 123

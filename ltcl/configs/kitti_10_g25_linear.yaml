@@ -46,3 +46,5 @@ VAE:
 MCC:
     FREQ: 0.5
     CORR: 'Spearman'
+
+SEED: 123

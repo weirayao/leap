@@ -14,6 +14,13 @@ from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 import yaml
 
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+
 def amari_distance(m_pred, m_true):
     """Calculates normalized amari distance [0,1] between two matrices"""
     r = np.linalg.inv(m_pred) @ m_true
