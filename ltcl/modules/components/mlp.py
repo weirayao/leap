@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class NLayerLeakyMLP(nn.Module):
 
-    def __init__(self, in_features, out_features, num_layers, hidden_dim=64):
+    def __init__(self, in_features, out_features, num_layers, hidden_dim=64, bias=True):
         super().__init__()
         layers = [ ]
         for l in range(num_layers):
@@ -33,14 +33,16 @@ class MLPEncoder(nn.Module):
         return self.net(x)
 
 class MLPDecoder(nn.Module):
-
-    def __init__(self, latent_size):
+    """Ground-truth MLP decoder used for data generation"""
+    def __init__(self, latent_size, num_layers=2):
         super().__init__()
         # TODO: Do not use ground-truth decoder architecture 
-        self.net = nn.Sequential(nn.LeakyReLU(0.2),
-                                 nn.Linear(latent_size, latent_size),
-                                 nn.LeakyReLU(0.2),
-                                 nn.Linear(latent_size, latent_size))
+        layers = [ ]
+        for l in range(num_layers):
+            layers.append(nn.LeakyReLU(0.2))
+            layers.append(nn.Linear(latent_size, latent_size))
+        
+        self.net = nn.Sequential(*layers)
     
     def forward(self, z):
         return self.net(z)

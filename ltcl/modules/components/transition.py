@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from ltcl.modules.components.mlp import NLayerLeakyMLP
 from ltcl.modules.components.graph import PropNet
+from ltcl.modules.components.transforms import AfflineCoupling
 
 class LinearTransitionPrior(nn.Module):
 
@@ -47,11 +48,17 @@ class PNLTransitionPrior(nn.Module):
                                  num_layers=num_layers, 
                                  hidden_dim=hidden_dim)
         
-        # Approximate the inverse of invertible function
+        # Approximate the inverse of mild invertible function
         self.f2 = NLayerLeakyMLP(in_features=latent_size, 
                                  out_features=latent_size, 
                                  num_layers=1, 
                                  hidden_dim=hidden_dim)
+
+        # self.f2 = AfflineCoupling(n_blocks = 8, 
+        #                           input_size = latent_size, 
+        #                           hidden_size = hidden_dim, 
+        #                           n_hidden = num_layers, 
+        #                           batch_norm = True)
     
     def forward(self, x, mask=None):
         # x: [BS, T, D]
@@ -73,9 +80,9 @@ class PNLTransitionPrior(nn.Module):
         residuals = torch.stack(residuals, dim=1)
         return residuals
 
-#TODO: Markovian (1lag) Interaction Network Transition Prior
+#TODO: Markovian Transition Prior (Graph Interaction Network)
 class INTransitionPrior(nn.Module):
 
     def __init__(self):
-        pass
+        raise NotImplementedError
 
