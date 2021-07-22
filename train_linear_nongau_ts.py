@@ -7,10 +7,10 @@ import os, pwd, yaml
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
-from ltcl.tools.utils import load_yaml
+from ltcl.tools.utils import load_yaml, setup_seed
 from train_spline import pretrain_spline
-from ltcl.datasets.utils import SimulationDataset_ts
-from ltcl.modules.trainer_linear_nongau_ts import AfflineVAESynthetic
+from ltcl.datasets.sim_dataset import SimulationDatasetTS
+from ltcl.modules.srnn import SRNNSynthetic
 
 
 def main(args):
@@ -27,6 +27,8 @@ def main(args):
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
 
+    setup_seed(cfg['SEED'])
+
     # Warm-start spline
     if cfg['SPLINE']['USE_WARM_START']:
         if not os.path.exists(cfg['SPLINE']['PATH']):
@@ -34,8 +36,8 @@ def main(args):
             pretrain_spline(args.exp)
             print('Done!')
 
-    data = SimulationDataset_ts(directory=cfg['ROOT'], 
-                             transition=cfg['DATASET'])
+    data = SimulationDatasetTS(directory=cfg['ROOT'], 
+                               transition=cfg['DATASET'])
 
     num_validation_samples = cfg['VAE']['N_VAL_SAMPLES']
     train_data, val_data = random_split(data, [len(data)-num_validation_samples, num_validation_samples])
@@ -52,25 +54,22 @@ def main(args):
                             num_workers=cfg['VAE']['CPU'],
                             shuffle=False)
 
-    # pdb.set_trace()
-
-    model = AfflineVAESynthetic(input_dim=cfg['VAE']['INPUT_DIM'],
-                                z_dim=cfg['VAE']['LATENT_DIM'], 
-                                lag=cfg['VAE']['LAG'],
-                                hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
-                                bound=cfg['SPLINE']['BOUND'],
-                                count_bins=cfg['SPLINE']['BINS'],
-                                order=cfg['SPLINE']['ORDER'],
-                                beta=cfg['VAE']['BETA'],
-                                gamma=cfg['VAE']['GAMMA'],
-                                alpha=cfg['VAE']['ALPHA'],
-                                lr=cfg['VAE']['LR'],
-                                diagonal=cfg['VAE']['DIAG'],
-                                bias=cfg['VAE']['BIAS'],
-                                use_warm_start=cfg['SPLINE']['USE_WARM_START'],
-                                spline_pth=cfg['SPLINE']['PATH'],
-                                decoder_dist=cfg['VAE']['DEC']['DIST'],
-                                correlation=cfg['MCC']['CORR'])
+    model = SRNNSynthetic(input_dim=cfg['VAE']['INPUT_DIM'],
+                          length=cfg['VAE']['LENGTH'],
+                          z_dim=cfg['VAE']['LATENT_DIM'], 
+                          lag=cfg['VAE']['LAG'],
+                          hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
+                          trans_prior=cfg['VAE']['TRANS_PRIOR'],
+                          bound=cfg['SPLINE']['BOUND'],
+                          count_bins=cfg['SPLINE']['BINS'],
+                          order=cfg['SPLINE']['ORDER'],
+                          beta=cfg['VAE']['BETA'],
+                          lr=cfg['VAE']['LR'],
+                          bias=cfg['VAE']['BIAS'],
+                          use_warm_start=cfg['SPLINE']['USE_WARM_START'],
+                          spline_pth=cfg['SPLINE']['PATH'],
+                          decoder_dist=cfg['VAE']['DEC']['DIST'],
+                          correlation=cfg['MCC']['CORR'])
 
     log_dir = os.path.join(cfg["LOG"], current_user, args.exp)
 
@@ -81,13 +80,6 @@ def main(args):
 
     # Train the model
     trainer.fit(model, train_loader, val_loader)
-
-def setup_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.backends.cudnn.deterministic = True
 
 if __name__ == "__main__":
 

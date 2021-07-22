@@ -49,26 +49,27 @@ class PNLTransitionPrior(nn.Module):
                                  hidden_dim=hidden_dim)
         
         # Approximate the inverse of mild invertible function
-        self.f2 = NLayerLeakyMLP(in_features=latent_size, 
-                                 out_features=latent_size, 
-                                 num_layers=1, 
-                                 hidden_dim=hidden_dim)
+        # self.f2 = NLayerLeakyMLP(in_features=latent_size, 
+        #                          out_features=latent_size, 
+        #                          num_layers=1, 
+        #                          hidden_dim=hidden_dim)
 
-        # self.f2 = AfflineCoupling(n_blocks = 8, 
-        #                           input_size = latent_size, 
-        #                           hidden_size = hidden_dim, 
-        #                           n_hidden = num_layers, 
-        #                           batch_norm = True)
+        self.f2 = AfflineCoupling(n_blocks = 2, 
+                                  input_size = latent_size, 
+                                  hidden_size = hidden_dim, 
+                                  n_hidden = num_layers, 
+                                  batch_norm = True)
     
     def forward(self, x, mask=None):
         # x: [BS, T, D]
-        batch_size, length, _ = x.shape
+        batch_size, length, input_dim = x.shape
         init_hiddens = self.init_hiddens.repeat(batch_size, 1, 1)
         if mask:
             mask = mask.repeat(batch_size, 1)
         # Pad learnable [BS, lags, latent_size] at the front
         x_pad = torch.cat((init_hiddens, x), dim=1)
-        x_inv = self.f2(x)
+        x_inv, _ = self.f2(x.view(-1, input_dim))
+        x_inv = x_inv.reshape(batch_size, length, input_dim)
 
         residuals = [ ]
         for t in range(length):

@@ -48,7 +48,8 @@ class SRNNSynthetic(pl.LightningModule):
         self.beta = beta
         self.correlation = correlation
         self.decoder_dist = decoder_dist
-        self.enc = MLPEncoder(latent_size=z_dim, 
+        self.enc = MLPEncoder(input_dim=input_dim,
+                              latent_size=z_dim, 
                               num_layers=4, 
                               hidden_dim=hidden_dim)
 
@@ -86,7 +87,7 @@ class SRNNSynthetic(pl.LightningModule):
         elif trans_prior == 'IN':
             self.transition_prior = INTransitionPrior()
         
-        self.spline = ComponentWiseSpline(input_dim=z_dim*length,
+        self.spline = ComponentWiseSpline(input_dim=z_dim,
                                           bound=bound,
                                           count_bins=count_bins,
                                           order=order)
@@ -98,8 +99,8 @@ class SRNNSynthetic(pl.LightningModule):
             print("Load pretrained spline flow", flush=True)
 
         # base distribution for calculation of log prob under the model
-        self.register_buffer('base_dist_mean', torch.zeros(self.z_dim*length))
-        self.register_buffer('base_dist_var', torch.eye(self.z_dim*length))
+        self.register_buffer('base_dist_mean', torch.zeros(self.z_dim))
+        self.register_buffer('base_dist_var', torch.eye(self.z_dim))
 
     @property
     def base_dist(self):
@@ -112,7 +113,6 @@ class SRNNSynthetic(pl.LightningModule):
         output, h_n = self.rnn(ft)
         batch_size, length, _ = output.shape
         # beta, hidden = self.gru(ft, hidden)
-        
         ## sequential sampling & reparametrization
         ## transition: p(zt|z_tau)
         zs, mus, logvars = [], [], []
@@ -163,7 +163,7 @@ class SRNNSynthetic(pl.LightningModule):
         return recon_loss
 
     def forward(self, batch):
-        x, y = batch['x'], batch['y']
+        x, y = batch['xt'], batch['yt']
         batch_size, length, _ = x.shape
         x = x.view(-1, self.input_dim)
         ft = self.enc(x)
@@ -172,7 +172,7 @@ class SRNNSynthetic(pl.LightningModule):
         return zs, mus, logvars       
 
     def training_step(self, batch, batch_idx):
-        x, y = batch['x'], batch['y']
+        x, y = batch['xt'], batch['yt']
         batch_size, length, _ = x.shape
         x_flat = x.view(-1, self.input_dim)
         ft = self.enc(x_flat)
@@ -184,23 +184,24 @@ class SRNNSynthetic(pl.LightningModule):
         # VAE ELBO loss: recon_loss + kld_loss
         recon_loss = self.reconstruction_loss(x, x_recon, self.decoder_dist)
         residuals = self.transition_prior(zs)
-        es, logabsdet = self.spline(residuals.contiguous().view(batch_size, -1))
-        log_pz = self.base_dist.log_prob(es) + logabsdet
+        es, logabsdet = self.spline(residuals.contiguous().view(-1, self.z_dim))
+        es = es.reshape(batch_size, length, self.z_dim)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size,length), dim=1)
+        log_pz = torch.sum(self.base_dist.log_prob(es), dim=1) + logabsdet
         q_dist = D.Normal(mus, torch.exp(logvars / 2))
         log_qz = q_dist.log_prob(zs)
         kld_loss = torch.sum(torch.sum(log_qz,dim=-1),dim=-1) - log_pz
-        kld_loss = kld_loss.mean()    
+        kld_loss = kld_loss[~torch.isnan(kld_loss)].mean()
         
         loss = self.length * recon_loss + self.beta * kld_loss
 
         self.log("train_elbo_loss", loss)
         self.log("train_recon_loss", recon_loss)
         self.log("train_kld_loss", kld_loss)
-
         return loss
     
     def validation_step(self, batch, batch_idx):
-        x, y = batch['x'], batch['y']
+        x, y = batch['xt'], batch['yt']
         batch_size, length, _ = x.shape
         x_flat = x.view(-1, self.input_dim)
         ft = self.enc(x_flat)
@@ -212,18 +213,20 @@ class SRNNSynthetic(pl.LightningModule):
         # VAE ELBO loss: recon_loss + kld_loss
         recon_loss = self.reconstruction_loss(x, x_recon, self.decoder_dist)
         residuals = self.transition_prior(zs)
-        es, logabsdet = self.spline(residuals.contiguous().view(batch_size, -1))
-        log_pz = self.base_dist.log_prob(es) + logabsdet
+        es, logabsdet = self.spline(residuals.contiguous().view(-1, self.z_dim))
+        es = es.reshape(batch_size, length, self.z_dim)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size,length), dim=1)
+        log_pz = torch.sum(self.base_dist.log_prob(es), dim=1) + logabsdet
         q_dist = D.Normal(mus, torch.exp(logvars / 2))
         log_qz = q_dist.log_prob(zs)
         kld_loss = torch.sum(torch.sum(log_qz,dim=-1),dim=-1) - log_pz
-        kld_loss = kld_loss.mean()    
+        kld_loss = kld_loss[~torch.isnan(kld_loss)].mean()
         
         loss = self.length * recon_loss + self.beta * kld_loss
 
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = mus.view(-1, self.z_dim).T.detach().cpu().numpy()
-        zt_true = batch["y"].view(-1, self.z_dim).T.detach().cpu().numpy()
+        zt_true = batch["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
         mcc = compute_mcc(zt_recon, zt_true, self.correlation)
 
         self.log("val_mcc", mcc) 
@@ -235,7 +238,7 @@ class SRNNSynthetic(pl.LightningModule):
     
     def sample(self, n=64):
         with torch.no_grad():
-            e = torch.randn(n, self.length*self.z_dim, device=self.device)
+            e = torch.randn(n, self.z_dim, device=self.device)
             eps, _ = self.spline.inverse(e)
         return eps
 

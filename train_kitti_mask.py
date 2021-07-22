@@ -12,12 +12,6 @@ from train_spline import pretrain_spline
 import os, pwd, yaml
 
 
-class MyPrintingCallback(Callback):
-
-    def on_train_batch_end(self, trainer):
-        
-        print('Starting to init trainer!')
-
 def main(args):
 
     assert args.exp is not None, "FATAL: "+__file__+": You must specify an exp config file (e.g., *.yaml)"
