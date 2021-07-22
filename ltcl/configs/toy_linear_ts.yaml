@@ -1,0 +1,48 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/data/datasets/logs/cmu_wyao/data'
+LOG: '/data/datasets/logs'
+DATASET: 'linear_nongaussian_ts'
+
+SPLINE:
+    USE_WARM_START: TRUE
+    TYPE: 'laplacian'
+    STEPS: 5000
+    LR: 0.001
+    CUDA: FALSE
+    BS: 64
+    LATENT_DIM: 8
+    BOUND: 5
+    BINS: 8
+    ORDER: 'linear'
+    PATH: '/data/datasets/logs/spline_linear_nongaussian_ts.pth'
+  
+VAE:
+    GPU: [1]
+    CPU: 8
+    TRAIN_BS: 64
+    VAL_BS: 128
+    EPOCHS: 200
+    N_VAL_SAMPLES: 1000
+    LAG: 2
+    LENGTH: 12
+    TRANS_PRIOR: 'L'
+    LR: 0.0005
+    BETA: 0.005
+    INPUT_DIM: 8
+    LATENT_DIM: 8
+    BIAS: FALSE
+    ENC:
+        HIDDEN_DIM: 128
+    DEC:
+        HIDDEN_DIM: 128
+        DIST: 'gaussian'
+    PIN: TRUE
+
+MCC:
+    FREQ: 0.1
+    CORR: 'Pearson' # 'Spearman' # 
+
+SEED: 440
