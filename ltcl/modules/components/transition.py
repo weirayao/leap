@@ -4,6 +4,8 @@ import torch.nn as nn
 from ltcl.modules.components.mlp import NLayerLeakyMLP
 from ltcl.modules.components.graph import PropNet
 from ltcl.modules.components.transforms import AfflineCoupling
+from ltcl.modules.components.base import GroupLinearLayer
+import ipdb as pdb
 
 class LinearTransitionPrior(nn.Module):
 
@@ -31,6 +33,33 @@ class LinearTransitionPrior(nn.Module):
         residuals = residuals.permute(0,2,1)
         return residuals
     
+class MBDTransitionPrior(nn.Module):
+
+    def __init__(self, lags, latent_size, bias=False):
+        super().__init__()
+        # self.init_hiddens = nn.Parameter(0.001 * torch.randn(lags, latent_size))    
+        # out[:,:,0] = (x[:,:,0]@conv.weight[:,:,0].T)+(x[:,:,1]@conv.weight[:,:,1].T) 
+        # out[:,:,1] = (x[:,:,1]@conv.weight[:,:,0].T)+(x[:,:,2]@conv.weight[:,:,1].T)
+        self.L = lags      
+        self.transition = GroupLinearLayer(din = latent_size, 
+                                           dout = latent_size, 
+                                           num_blocks = lags,
+                                           diagonal = False)
+    
+    def forward(self, x, mask=None):
+        # x: [BS, T, D] -> [BS, T-L, L+1, D]
+        batch_size, length, input_dim = x.shape
+        # init_hiddens = self.init_hiddens.repeat(batch_size, 1, 1)
+        # x = torch.cat((init_hiddens, x), dim=1)
+        x = x.unfold(dimension = 1, size = self.L+1, step = 1)
+        x = torch.swapaxes(x, 2, 3)
+        shape = x.shape
+
+        x = x.reshape(-1, self.L+1, input_dim)
+        xx, yy = x[:,-1:], x[:,:-1]
+        residuals = torch.sum(self.transition(yy), dim=1) - xx.squeeze()
+        residuals = residuals.reshape(batch_size, -1, input_dim)
+        return residuals
 
 class PNLTransitionPrior(nn.Module):
 
@@ -49,15 +78,10 @@ class PNLTransitionPrior(nn.Module):
                                  hidden_dim=hidden_dim)
         
         # Approximate the inverse of mild invertible function
-        # self.f2 = NLayerLeakyMLP(in_features=latent_size, 
-        #                          out_features=latent_size, 
-        #                          num_layers=1, 
-        #                          hidden_dim=hidden_dim)
-
-        self.f2 = AfflineCoupling(n_blocks = 2, 
+        self.f2 = AfflineCoupling(n_blocks = num_layers, 
                                   input_size = latent_size, 
                                   hidden_size = hidden_dim, 
-                                  n_hidden = num_layers, 
+                                  n_hidden = 1, 
                                   batch_norm = True)
     
     def forward(self, x, mask=None):
@@ -68,7 +92,7 @@ class PNLTransitionPrior(nn.Module):
             mask = mask.repeat(batch_size, 1)
         # Pad learnable [BS, lags, latent_size] at the front
         x_pad = torch.cat((init_hiddens, x), dim=1)
-        x_inv, _ = self.f2(x.view(-1, input_dim))
+        x_inv, log_abs_det_jacobian = self.f2(x.view(-1, input_dim))
         x_inv = x_inv.reshape(batch_size, length, input_dim)
 
         residuals = [ ]
@@ -79,7 +103,9 @@ class PNLTransitionPrior(nn.Module):
             res = self.f1(x_in) - x_inv[:,t]
             residuals.append(res)
         residuals = torch.stack(residuals, dim=1)
-        return residuals
+        # log_abs_det_jacobian: [BS, ]
+        log_abs_det_jacobian = torch.sum(log_abs_det_jacobian.reshape(batch_size, length), dim=1)
+        return residuals, log_abs_det_jacobian
 
 #TODO: Markovian Transition Prior (Graph Interaction Network)
 class INTransitionPrior(nn.Module):
