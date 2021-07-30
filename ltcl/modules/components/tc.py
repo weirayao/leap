@@ -19,18 +19,21 @@ class Discriminator(nn.Module):
     def __init__(self, z_dim):
         super(Discriminator, self).__init__()
         self.z_dim = z_dim
+        self.hidden_dim = 128
         self.net = nn.Sequential(
-            nn.Linear(z_dim, 1000),
+            nn.Linear(z_dim, self.hidden_dim),
+            nn.BatchNorm1d(self.hidden_dim),
             nn.LeakyReLU(0.2, True),
-            nn.Linear(1000, 1000),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.BatchNorm1d(self.hidden_dim),
             nn.LeakyReLU(0.2, True),
-            nn.Linear(1000, 1000),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.BatchNorm1d(self.hidden_dim),
             nn.LeakyReLU(0.2, True),
-            nn.Linear(1000, 1000),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.BatchNorm1d(self.hidden_dim),
             nn.LeakyReLU(0.2, True),
-            nn.Linear(1000, 1000),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(1000, 2),
+            nn.Linear(self.hidden_dim, 2),
         )
         self.weight_init()
 

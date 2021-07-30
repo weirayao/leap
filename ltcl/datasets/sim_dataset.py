@@ -117,3 +117,29 @@ class SimulationDatasetTS(Dataset):
 		xt = torch.from_numpy(self.data["xt"][idx].astype('float32'))
 		sample = {"yt": yt, "xt": xt}
 		return sample
+
+class SimulationDatasetTSTwoSample(Dataset):
+	
+	def __init__(self, directory, transition="linear_nongaussian_ts"):
+		super().__init__()
+		assert transition in ["linear_nongaussian_ts", "nonlinear_gaussian_ts", 
+							  "nonlinear_nongaussian_ts", "pnl_nongaussian_ts"]
+		self.path = os.path.join(directory, transition, "data.npz")
+		self.npz = np.load(self.path)
+		self.data = { }
+		for key in ["yt", "xt"]:
+			self.data[key] = self.npz[key]
+
+	def __len__(self):
+		return len(self.data["yt"])
+
+	def __getitem__(self, idx):
+		yt = torch.from_numpy(self.data["yt"][idx].astype('float32'))
+		xt = torch.from_numpy(self.data["xt"][idx].astype('float32'))
+		idx_rnd = random.randint(0, len(self.data["yt"])-1)
+		ytr = torch.from_numpy(self.data["yt"][idx_rnd].astype('float32'))
+		xtr = torch.from_numpy(self.data["xt"][idx_rnd].astype('float32'))
+		sample = {"s1": {"yt": yt, "xt": xt},
+				  "s2": {"yt": ytr, "xt": xtr}
+				  }
+		return sample

@@ -2,13 +2,14 @@
 
 import torch
 import numpy as np
-import ipdb as pdb
 import torch.nn as nn
 import pytorch_lightning as pl
 import torch.distributions as D
 from torch.nn import functional as F
-from .components.transition import LinearTransitionPrior, PNLTransitionPrior
-from .components.mlp import MLPEncoder, MLPDecoder, NLayerLeakyMLP
+from .components.transition import PNLTransitionPrior, MBDTransitionPrior
+from .components.mlp import MLPEncoder, MLPDecoder, Inference
+from .components.tc import Discriminator, permute_dims
+from .components.beta import BetaVAE_MLP
 from .metrics.correlation import compute_mcc
 from .components.transforms import ComponentWiseSpline
 
@@ -24,11 +25,14 @@ class SRNNSynthetic(pl.LightningModule):
         lag,
         hidden_dim=128,
         trans_prior='L',
+        infer_mode='R',
         bound=5,
         count_bins=8,
         order='linear',
         lr=1e-4,
-        beta=0.1,
+        beta=0.0025,
+        gamma=0.0075,
+        sigma=1e-6,
         bias=False,
         use_warm_start=False,
         spline_pth=None,
@@ -38,6 +42,8 @@ class SRNNSynthetic(pl.LightningModule):
         super().__init__()
         # Transition prior must be L (Linear), PNL (Post-nonlinear) or IN (Interaction)
         assert trans_prior in ('L', 'PNL','IN')
+        # Inference mode must be R (Recurrent) or F (Factorized)
+        assert infer_mode in ('R', 'F')
 
         self.z_dim = z_dim
         self.lag = lag
@@ -46,39 +52,45 @@ class SRNNSynthetic(pl.LightningModule):
         self.lag = lag
         self.length = length
         self.beta = beta
+        self.gamma = gamma
+        self.sigma = sigma
         self.correlation = correlation
         self.decoder_dist = decoder_dist
-        self.enc = MLPEncoder(input_dim=input_dim,
-                              latent_size=z_dim, 
-                              num_layers=4, 
-                              hidden_dim=hidden_dim)
+        self.infer_mode = infer_mode
 
-        self.dec = MLPDecoder(latent_size=z_dim, 
-                              num_layers=2)
-        
-        # Bi-directional hidden state rnn
-        self.rnn = nn.GRU(input_size=z_dim, 
-                          hidden_size=hidden_dim, 
-                          num_layers=1, 
-                          batch_first=True, 
-                          bidirectional=True)
-        
-        # Sequential inference net 
-        self.q_mu = NLayerLeakyMLP(in_features=lag*z_dim+2*hidden_dim, 
-                                   out_features=z_dim, 
-                                   num_layers=3, 
+        # Recurrent/Factorized inference
+        if infer_mode == 'R':
+            self.enc = MLPEncoder(latent_size=z_dim, 
+                                num_layers=3, 
+                                hidden_dim=hidden_dim)
+
+            self.dec = MLPDecoder(latent_size=z_dim, 
+                                num_layers=2,
+                                hidden_dim=hidden_dim)
+
+            # Bi-directional hidden state rnn
+            self.rnn = nn.GRU(input_size=z_dim, 
+                            hidden_size=hidden_dim, 
+                            num_layers=1, 
+                            batch_first=True, 
+                            bidirectional=True)
+            
+            # Inference net
+            self.net = Inference(lag=lag,
+                                 z_dim=z_dim, 
+                                 hidden_dim=hidden_dim, 
+                                 num_layers=1)
+
+        elif infer_mode == 'F':
+            self.net = BetaVAE_MLP(input_dim=input_dim, 
+                                   z_dim=z_dim, 
                                    hidden_dim=hidden_dim)
-
-        self.q_logvar = NLayerLeakyMLP(in_features=lag*z_dim+2*hidden_dim, 
-                                       out_features=z_dim, 
-                                       num_layers=3, 
-                                       hidden_dim=hidden_dim)
 
         # Initialize transition prior
         if trans_prior == 'L':
-            self.transition_prior = LinearTransitionPrior(lags=lag, 
-                                                          latent_size=z_dim, 
-                                                          bias=bias)
+            self.transition_prior = MBDTransitionPrior(lags=lag, 
+                                                       latent_size=z_dim, 
+                                                       bias=bias)
         elif trans_prior == 'PNL':
             self.transition_prior = PNLTransitionPrior(lags=lag, 
                                                        latent_size=z_dim, 
@@ -87,6 +99,7 @@ class SRNNSynthetic(pl.LightningModule):
         elif trans_prior == 'IN':
             self.transition_prior = INTransitionPrior()
         
+        # Spline flow model to learn the noise distribution
         self.spline = ComponentWiseSpline(input_dim=z_dim,
                                           bound=bound,
                                           count_bins=count_bins,
@@ -97,6 +110,9 @@ class SRNNSynthetic(pl.LightningModule):
                                         map_location=torch.device('cpu')))
 
             print("Load pretrained spline flow", flush=True)
+
+        # FactorVAE
+        self.discriminator = Discriminator(z_dim = z_dim*self.length)
 
         # base distribution for calculation of log prob under the model
         self.register_buffer('base_dist_mean', torch.zeros(self.z_dim))
@@ -117,13 +133,14 @@ class SRNNSynthetic(pl.LightningModule):
         ## transition: p(zt|z_tau)
         zs, mus, logvars = [], [], []
         for tau in range(self.lag):
-            zs.append(torch.zeros((batch_size, self.z_dim), device=output.device))
+            zs.append(torch.ones((batch_size, self.z_dim), device=output.device))
 
         for t in range(length):
             mid = torch.cat(zs[-self.lag:], dim=1)
-            inputs = torch.cat([mid, output[:,t,:]], dim=1)       
-            mu = self.q_mu(inputs)
-            logvar = self.q_logvar(inputs)
+            inputs = torch.cat([mid, output[:,t,:]], dim=1)    
+            distributions = self.net(inputs)
+            mu = distributions[:, :self.z_dim]
+            logvar = distributions[:, self.z_dim:]
             zt = self.reparameterize(mu, logvar, random_sampling)
             zs.append(zt)
             mus.append(mu)
@@ -165,74 +182,147 @@ class SRNNSynthetic(pl.LightningModule):
     def forward(self, batch):
         x, y = batch['xt'], batch['yt']
         batch_size, length, _ = x.shape
-        x = x.view(-1, self.input_dim)
-        ft = self.enc(x)
-        ft = ft.view(batch_size, length, -1)
-        zs, mus, logvars = self.inference(ft, random_sampling=False)
+        x_flat = x.view(-1, self.input_dim)
+        if self.infer_mode == 'R':
+            ft = self.enc(x_flat)
+            ft = ft.view(batch_size, length, -1)
+            zs, mus, logvars = self.inference(ft, random_sampling=True)
+        elif self.infer_mode == 'F':
+            _, mus, logvars, zs = self.net(x_flat)
         return zs, mus, logvars       
 
-    def training_step(self, batch, batch_idx):
-        x, y = batch['xt'], batch['yt']
+    def training_step(self, batch, batch_idx, optimizer_idx):
+        x, y = batch['s1']['xt'], batch['s1']['yt']
         batch_size, length, _ = x.shape
-        x_flat = x.view(-1, self.input_dim)
-        ft = self.enc(x_flat)
-        ft = ft.view(batch_size, length, -1)
-        zs, mus, logvars = self.inference(ft)
-        zs_flat = zs.contiguous().view(-1, self.z_dim)
-        x_recon = self.dec(zs_flat)
+        sum_log_abs_det_jacobians = 0
+        # Inference
+        if self.infer_mode == 'R':
+            x_flat = x.view(-1, self.input_dim)
+            ft = self.enc(x_flat)
+            ft = ft.view(batch_size, length, -1)
+            zs, mus, logvars = self.inference(ft)
+            zs_flat = zs.contiguous().view(-1, self.z_dim)
+            x_recon = self.dec(zs_flat)
+        elif self.infer_mode == 'F':
+            x_recon, mus, logvars, zs = self.net(x_flat)
+        
+        # Reshape to time-series format
         x_recon = x_recon.view(batch_size, length, self.input_dim)
+        mus = mus.reshape(batch_size, length, self.z_dim)
+        logvars  = logvars.reshape(batch_size, length, self.z_dim)
+        zs = zs.reshape(batch_size, length, self.z_dim)
+
         # VAE ELBO loss: recon_loss + kld_loss
-        recon_loss = self.reconstruction_loss(x, x_recon, self.decoder_dist)
-        residuals = self.transition_prior(zs)
-        es, logabsdet = self.spline(residuals.contiguous().view(-1, self.z_dim))
-        es = es.reshape(batch_size, length, self.z_dim)
-        logabsdet = torch.sum(logabsdet.reshape(batch_size,length), dim=1)
-        log_pz = torch.sum(self.base_dist.log_prob(es), dim=1) + logabsdet
+        recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
+        (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
         q_dist = D.Normal(mus, torch.exp(logvars / 2))
         log_qz = q_dist.log_prob(zs)
-        kld_loss = torch.sum(torch.sum(log_qz,dim=-1),dim=-1) - log_pz
-        kld_loss = kld_loss[~torch.isnan(kld_loss)].mean()
-        
-        loss = self.length * recon_loss + self.beta * kld_loss
+        # Past KLD
+        p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag]), torch.ones_like(logvars[:,:self.lag]))
+        log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag]),dim=-1),dim=-1)
+        log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag],dim=-1),dim=-1)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = kld_normal.mean()
+        # Future KLD
+        log_qz_laplace = log_qz[:,self.lag:]
+        residuals, logabsdet = self.transition_prior(zs)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        es, logabsdet = self.spline(residuals.contiguous().view(-1, self.z_dim))
+        es = es.reshape(batch_size, length-self.lag, self.z_dim)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
+        kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
+        kld_laplace = kld_laplace.mean()
 
-        self.log("train_elbo_loss", loss)
-        self.log("train_recon_loss", recon_loss)
-        self.log("train_kld_loss", kld_loss)
-        return loss
+        # VAE training
+        if optimizer_idx == 0:
+            for p in self.discriminator.parameters():
+                p.requires_grad = False
+            D_z = self.discriminator(residuals.contiguous().view(batch_size, -1))
+            tc_loss = (D_z[:, :1] - D_z[:, 1:]).mean()
+            loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace + self.sigma*tc_loss
+            self.log("train_elbo_loss", loss)
+            self.log("train_recon_loss", recon_loss)
+            self.log("train_kld_normal", kld_normal)
+            self.log("train_kld_laplace", kld_laplace)
+            self.log("v_tc_loss", tc_loss)
+            return loss
+
+        # Discriminator training
+        if optimizer_idx == 1:
+            for p in self.discriminator.parameters():
+                p.requires_grad = True
+            residuals = residuals.detach()
+            D_z = self.discriminator(residuals.contiguous().view(batch_size, -1))
+            # Permute the other data batch
+            ones = torch.ones(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
+            zeros = torch.zeros(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
+            zs_perm, _, _ = self.forward(batch['s2'])
+            zs_perm = zs_perm.reshape(batch_size, length, self.z_dim)
+            residuals_perm, _ = self.transition_prior(zs_perm)
+            residuals_perm = permute_dims(residuals_perm.contiguous().view(batch_size, -1)).detach()
+            D_z_pperm = self.discriminator(residuals_perm)
+            D_tc_loss = 0.5*(F.cross_entropy(D_z, zeros) + F.cross_entropy(D_z_pperm, ones))            
+            self.log("d_tc_loss", D_tc_loss)
+            return D_tc_loss
     
     def validation_step(self, batch, batch_idx):
-        x, y = batch['xt'], batch['yt']
+        x, y = batch['s1']['xt'], batch['s1']['yt']
         batch_size, length, _ = x.shape
-        x_flat = x.view(-1, self.input_dim)
-        ft = self.enc(x_flat)
-        ft = ft.view(batch_size, length, -1)
-        zs, mus, logvars = self.inference(ft)
-        zs_flat = zs.contiguous().view(-1, self.z_dim)
-        x_recon = self.dec(zs_flat)
+        sum_log_abs_det_jacobians = 0
+        # Inference
+        if self.infer_mode == 'R':
+            x_flat = x.view(-1, self.input_dim)
+            ft = self.enc(x_flat)
+            ft = ft.view(batch_size, length, -1)
+            zs, mus, logvars = self.inference(ft)
+            zs_flat = zs.contiguous().view(-1, self.z_dim)
+            x_recon = self.dec(zs_flat)
+        elif self.infer_mode == 'F':
+            x_recon, mus, logvars, zs = self.net(x_flat)
+        
+        # Reshape to time-series format
         x_recon = x_recon.view(batch_size, length, self.input_dim)
+        mus = mus.reshape(batch_size, length, self.z_dim)
+        logvars  = logvars.reshape(batch_size, length, self.z_dim)
+        zs = zs.reshape(batch_size, length, self.z_dim)
+
         # VAE ELBO loss: recon_loss + kld_loss
-        recon_loss = self.reconstruction_loss(x, x_recon, self.decoder_dist)
-        residuals = self.transition_prior(zs)
-        es, logabsdet = self.spline(residuals.contiguous().view(-1, self.z_dim))
-        es = es.reshape(batch_size, length, self.z_dim)
-        logabsdet = torch.sum(logabsdet.reshape(batch_size,length), dim=1)
-        log_pz = torch.sum(self.base_dist.log_prob(es), dim=1) + logabsdet
+        recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
+        (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
         q_dist = D.Normal(mus, torch.exp(logvars / 2))
         log_qz = q_dist.log_prob(zs)
-        kld_loss = torch.sum(torch.sum(log_qz,dim=-1),dim=-1) - log_pz
-        kld_loss = kld_loss[~torch.isnan(kld_loss)].mean()
+        # Past KLD
+        p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag]), torch.ones_like(logvars[:,:self.lag]))
+        log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag]),dim=-1),dim=-1)
+        log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag],dim=-1),dim=-1)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = kld_normal.mean()
+        # Future KLD
+        log_qz_laplace = log_qz[:,self.lag:]
+        residuals, logabsdet = self.transition_prior(zs)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        es, logabsdet = self.spline(residuals.contiguous().view(-1, self.z_dim))
+        es = es.reshape(batch_size, length-self.lag, self.z_dim)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
+        kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
+        kld_laplace = kld_laplace.mean()
         
-        loss = self.length * recon_loss + self.beta * kld_loss
+        loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace
 
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = mus.view(-1, self.z_dim).T.detach().cpu().numpy()
-        zt_true = batch["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
+        zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
         mcc = compute_mcc(zt_recon, zt_true, self.correlation)
 
         self.log("val_mcc", mcc) 
         self.log("val_elbo_loss", loss)
         self.log("val_recon_loss", recon_loss)
-        self.log("val_kld_loss", kld_loss)
+        self.log("val_kld_normal", kld_normal)
+        self.log("val_kld_laplace", kld_laplace)
 
         return loss
     
@@ -250,5 +340,7 @@ class SRNNSynthetic(pl.LightningModule):
         return x_recon
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
-        return optimizer
+        opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999))
+        opt_d = torch.optim.SGD(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
+        # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
+        return [opt_v, opt_d], []

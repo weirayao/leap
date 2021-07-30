@@ -8,7 +8,7 @@ from ltcl.modules.components.base import GroupLinearLayer
 import ipdb as pdb
 
 class LinearTransitionPrior(nn.Module):
-
+    # Deprecated
     def __init__(self, lags, latent_size, bias=False):
         super().__init__()
         self.init_hiddens = nn.Parameter(0.01 * torch.randn(latent_size, lags))
@@ -59,7 +59,9 @@ class MBDTransitionPrior(nn.Module):
         xx, yy = x[:,-1:], x[:,:-1]
         residuals = torch.sum(self.transition(yy), dim=1) - xx.squeeze()
         residuals = residuals.reshape(batch_size, -1, input_dim)
-        return residuals
+        # Dummy jacobian matrix (0) to represent identity mapping
+        log_abs_det_jacobian = torch.zeros(batch_size, device=x.device)
+        return residuals, log_abs_det_jacobian
 
 class PNLTransitionPrior(nn.Module):
 
@@ -92,7 +94,7 @@ class PNLTransitionPrior(nn.Module):
             mask = mask.repeat(batch_size, 1)
         # Pad learnable [BS, lags, latent_size] at the front
         x_pad = torch.cat((init_hiddens, x), dim=1)
-        x_inv, log_abs_det_jacobian = self.f2(x.view(-1, input_dim))
+        x_inv, log_abs_det_jacobian = self.f2(x.reshape(-1, input_dim))
         x_inv = x_inv.reshape(batch_size, length, input_dim)
 
         residuals = [ ]
