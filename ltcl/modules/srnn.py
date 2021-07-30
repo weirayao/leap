@@ -195,9 +195,9 @@ class SRNNSynthetic(pl.LightningModule):
         x, y = batch['s1']['xt'], batch['s1']['yt']
         batch_size, length, _ = x.shape
         sum_log_abs_det_jacobians = 0
+        x_flat = x.view(-1, self.input_dim)
         # Inference
         if self.infer_mode == 'R':
-            x_flat = x.view(-1, self.input_dim)
             ft = self.enc(x_flat)
             ft = ft.view(batch_size, length, -1)
             zs, mus, logvars = self.inference(ft)
