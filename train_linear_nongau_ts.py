@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, random_split
 
 from ltcl.tools.utils import load_yaml, setup_seed
 from train_spline import pretrain_spline
-from ltcl.datasets.sim_dataset import SimulationDatasetTS
+from ltcl.datasets.sim_dataset import SimulationDatasetTS, SimulationDatasetTSTwoSample
 from ltcl.modules.srnn import SRNNSynthetic
 
 
@@ -27,7 +27,7 @@ def main(args):
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
 
-    setup_seed(cfg['SEED'])
+    # setup_seed(cfg['SEED'])
 
     # Warm-start spline
     if cfg['SPLINE']['USE_WARM_START']:
@@ -36,8 +36,8 @@ def main(args):
             pretrain_spline(args.exp)
             print('Done!')
 
-    data = SimulationDatasetTS(directory=cfg['ROOT'], 
-                               transition=cfg['DATASET'])
+    data = SimulationDatasetTSTwoSample(directory=cfg['ROOT'], 
+                                        transition=cfg['DATASET'])
 
     num_validation_samples = cfg['VAE']['N_VAL_SAMPLES']
     train_data, val_data = random_split(data, [len(data)-num_validation_samples, num_validation_samples])
@@ -45,7 +45,7 @@ def main(args):
                               batch_size=cfg['VAE']['TRAIN_BS'], 
                               pin_memory=cfg['VAE']['PIN'],
                               num_workers=cfg['VAE']['CPU'],
-                              drop_last=True,
+                              drop_last=False,
                               shuffle=True)
 
     val_loader = DataLoader(val_data, 
@@ -64,6 +64,7 @@ def main(args):
                           count_bins=cfg['SPLINE']['BINS'],
                           order=cfg['SPLINE']['ORDER'],
                           beta=cfg['VAE']['BETA'],
+                          gamma=cfg['VAE']['GAMMA'],
                           lr=cfg['VAE']['LR'],
                           bias=cfg['VAE']['BIAS'],
                           use_warm_start=cfg['SPLINE']['USE_WARM_START'],
@@ -90,6 +91,4 @@ if __name__ == "__main__":
         type=str
     )
     args = argparser.parse_args()
-    setup_seed(123)
-    torch.cuda.empty_cache()
     main(args)
