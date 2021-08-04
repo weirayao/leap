@@ -647,10 +647,13 @@ def nonlinear_ns():
         yt_ns.append(yt); xt_ns.append(xt); ct_ns.append(ct)
         yt = []; xt = []; ct = []
 
-    yt_ns = np.array(yt_ns); xt_ns = np.array(xt_ns); ct_ns = np.array(ct_ns)
-    # yt_ns.shape: (3, 50, 6, 8)
-    # xt_ns.shape: (3, 50, 6, 8)
-    # ct_ns.shape: (3, 6)
+    yt_ns = np.array(yt_ns).transpose(1,2,3,0)
+    xt_ns = np.array(xt_ns).transpose(1,2,3,0)
+    ct_ns = np.broadcast_to(np.array(ct_ns)[..., None],np.array(ct_ns).shape+(batch_size,)).transpose(2,1,0)
+    # yt_ns.shape: (bs, 6, 8, 3)
+    # xt_ns.shape: (bs, 6, 8, 3)
+    # ct_ns.shape: (bs, 6, 3)
+    pdb.set_trace()
     np.savez(os.path.join(path, "data"), 
             yt = yt_ns, 
             xt = xt_ns,

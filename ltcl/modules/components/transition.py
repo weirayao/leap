@@ -73,7 +73,7 @@ class PNLTransitionPrior(nn.Module):
         hidden_dim=64):
         super().__init__()
         self.L = lags
-        self.init_hiddens = nn.Parameter(0.01 * torch.randn(lags, latent_size))       
+        # self.init_hiddens = nn.Parameter(0.01 * torch.randn(lags, latent_size))       
         self.f1 = NLayerLeakyMLP(in_features=lags*latent_size, 
                                  out_features=latent_size, 
                                  num_layers=num_layers, 
@@ -89,24 +89,18 @@ class PNLTransitionPrior(nn.Module):
     def forward(self, x, mask=None):
         # x: [BS, T, D]
         batch_size, length, input_dim = x.shape
-        init_hiddens = self.init_hiddens.repeat(batch_size, 1, 1)
-        if mask:
-            mask = mask.repeat(batch_size, 1)
         # Pad learnable [BS, lags, latent_size] at the front
-        x_pad = torch.cat((init_hiddens, x), dim=1)
-        x_inv, log_abs_det_jacobian = self.f2(x.reshape(-1, input_dim))
-        x_inv = x_inv.reshape(batch_size, length, input_dim)
+        x_inv, log_abs_det_jacobian = self.f2(x[:,self.L:,:].reshape(-1, input_dim))
+        x_inv = x_inv.reshape(batch_size, length-self.L, input_dim)
 
         residuals = [ ]
-        for t in range(length):
-            x_in = x_pad[:,t:t+self.L,:].view(batch_size, -1)
-            if mask:
-                x_in = x_in * mask
+        for t in range(length-self.L):
+            x_in = x[:,t:t+self.L,:].view(batch_size, -1)
             res = self.f1(x_in) - x_inv[:,t]
             residuals.append(res)
         residuals = torch.stack(residuals, dim=1)
         # log_abs_det_jacobian: [BS, ]
-        log_abs_det_jacobian = torch.sum(log_abs_det_jacobian.reshape(batch_size, length), dim=1)
+        log_abs_det_jacobian = torch.sum(log_abs_det_jacobian.reshape(batch_size, length-self.L), dim=1)
         return residuals, log_abs_det_jacobian
 
 #TODO: Markovian Transition Prior (Graph Interaction Network)
