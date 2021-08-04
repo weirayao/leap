@@ -578,7 +578,7 @@ def nonlinear_ns():
     transitions = []
     batch_size = 50000
     Niter4condThresh = 1e4
-    noise_scale = [0.01, 0.05, 0.1] 
+    noise_scale = [0.099, 0.101, 0.1] 
 
     path = os.path.join(root_dir, "nonlinear_ns")
     os.makedirs(path, exist_ok=True)
@@ -650,10 +650,7 @@ def nonlinear_ns():
     yt_ns = np.array(yt_ns).transpose(1,2,3,0)
     xt_ns = np.array(xt_ns).transpose(1,2,3,0)
     ct_ns = np.broadcast_to(np.array(ct_ns)[..., None],np.array(ct_ns).shape+(batch_size,)).transpose(2,1,0)
-    # yt_ns.shape: (bs, 6, 8, 3)
-    # xt_ns.shape: (bs, 6, 8, 3)
-    # ct_ns.shape: (bs, 6, 3)
-    pdb.set_trace()
+
     np.savez(os.path.join(path, "data"), 
             yt = yt_ns, 
             xt = xt_ns,
