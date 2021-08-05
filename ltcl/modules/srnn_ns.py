@@ -200,33 +200,30 @@ class SRNNSyntheticNS(pl.LightningModule):
             if self.infer_mode == 'R':
                 ft = self.enc(x_flat)
                 ft = ft.view(batch_size, length, -1)
-                zs, mus, logvars = self.inference(ft)
-                zs_flat = zs.contiguous().view(-1, self.z_dim)
-                x_recon = self.dec(zs_flat)
+                zs, mus, logvars = self.inference(ft, random_sampling=True)
             elif self.infer_mode == 'F':
-                x_recon, mus, logvars, zs = self.net(x_flat)
+                _, mus, logvars, zs = self.net(x_flat)
             
-            x_recon_list.append(x_recon.cpu().numpy()); mus_list.append(mus.cpu().numpy()); 
-            logvars_list.append(logvars.cpu().numpy()); zs_list.append(zs.cpu().numpy()); 
+            mus_list.append(mus); logvars_list.append(logvars); zs_list.append(zs); 
         
-        x_recon = torch.from_numpy(np.array(x_recon_list).transpose(1,2,0)).to(x.device)
-        mus = torch.from_numpy(np.array(mus_list).transpose(1,2,3,0)).to(x.device)
-        logvars = torch.from_numpy(np.array(logvars_list).transpose(1,2,3,0)).to(x.device)
-        zs = torch.from_numpy(np.array(zs_list).transpose(1,2,3,0)).to(x.device)
+        mus = torch.cat(mus_list, dim=0)
+        logvars = torch.cat(logvars_list, dim=0)
+        zs = torch.cat(zs_list, dim=0)
 
         # Reshape to time-series format
-        x_recon = x_recon.view(batch_size, length, self.input_dim, nclass)
         mus = mus.reshape(batch_size, length, self.z_dim, nclass)
         logvars  = logvars.reshape(batch_size, length, self.z_dim, nclass)
         zs = zs.reshape(batch_size, length, self.z_dim, nclass)
+        
         return zs, mus, logvars       
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         x, y, c = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
         batch_size, length, _, nclass = x.shape
-        sum_log_abs_det_jacobians = 0
+
         x_recon_list = []; zs_list = []
         mus_list = []; logvars_list = []
+
         for i in range(nclass):
             x_flat = x[...,i].view(-1, self.input_dim)
             # Inference
@@ -239,13 +236,11 @@ class SRNNSyntheticNS(pl.LightningModule):
             elif self.infer_mode == 'F':
                 x_recon, mus, logvars, zs = self.net(x_flat)
             
-            x_recon_list.append(x_recon.cpu().detach().numpy()); mus_list.append(mus.cpu().detach().numpy()); 
-            logvars_list.append(logvars.cpu().detach().numpy()); zs_list.append(zs.cpu().detach().numpy()); 
+            x_recon_list.append(x_recon); mus_list.append(mus); 
+            logvars_list.append(logvars); zs_list.append(zs); 
         
-        x_recon = torch.from_numpy(np.array(x_recon_list).transpose(1,2,0)).to(x.device)
-        mus = torch.from_numpy(np.array(mus_list).transpose(1,2,3,0)).to(x.device)
-        logvars = torch.from_numpy(np.array(logvars_list).transpose(1,2,3,0)).to(x.device)
-        zs = torch.from_numpy(np.array(zs_list).transpose(1,2,3,0)).to(x.device)
+        x_recon = torch.cat(x_recon_list, dim=0); mus = torch.cat(mus_list, dim=0)
+        logvars = torch.cat(logvars_list, dim=0); zs = torch.cat(zs_list, dim=0)
 
         # Reshape to time-series format
         x_recon = x_recon.view(batch_size, length, self.input_dim, nclass)
@@ -254,22 +249,31 @@ class SRNNSyntheticNS(pl.LightningModule):
         zs = zs.reshape(batch_size, length, self.z_dim, nclass)
 
         # VAE ELBO loss: recon_loss + kld_loss
-        recon_loss = self.reconstruction_loss(x[:,:,:self.lag], x_recon[:,:,:self.lag], self.decoder_dist) + \
-        (self.reconstruction_loss(x[:,:,self.lag:], x_recon[:,:,self.lag:], self.decoder_dist))/(length-self.lag)
-        # try:
+        demo_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist)
+        recon_sum = torch.zeros(demo_loss.shape).to(x.device)
+        for i in range(nclass):
+            recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
+            (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
+            recon_sum += recon_loss
+            break
+        
         q_dist = D.Normal(mus, torch.abs(torch.exp(logvars / 2)))
         log_qz = q_dist.log_prob(zs)
         # except:
         #     pdb.set_trace()
         # Past KLD
-        p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag]), torch.ones_like(logvars[:,:self.lag]))
-        log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag]),dim=-1),dim=-1)
-        log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag],dim=-1),dim=-1)
-        kld_normal = log_qz_normal - log_pz_normal
-        kld_normal = kld_normal.mean()
+        kld_normal_sum = torch.zeros(demo_loss.shape).to(x.device)
+        for i in range(nclass):
+            p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag,:,i]), torch.ones_like(logvars[:,:self.lag,:,i]))
+            log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag,:,i]),dim=-1),dim=-1)
+            log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag,:,i],dim=-1),dim=-1)
+            kld_normal = log_qz_normal - log_pz_normal
+            kld_normal = kld_normal.mean()
+            kld_normal_sum += kld_normal
+            break
         # Future KLD
         residuals_list = []
-        kld_lap_sum = torch.zeros(recon_loss.shape).to(x.device)
+        kld_lap_sum = torch.zeros(demo_loss.shape).to(x.device)
         for i in range(nclass):
             sum_log_abs_det_jacobians = 0
             log_qz_laplace = log_qz[:, self.lag:, :, i]
@@ -285,22 +289,23 @@ class SRNNSyntheticNS(pl.LightningModule):
             kld_laplace = kld_laplace.mean()
             kld_lap_sum += kld_laplace
             residuals_list.append(residuals)
-        
-        loss = recon_loss + self.beta * kld_normal + self.gamma * kld_lap_sum
-
+            break
+    
         # VAE training
         if optimizer_idx == 0:
             for p in self.discriminator.parameters():
                 p.requires_grad = False
-            tc_loss_sum = torch.zeros(recon_loss.shape).to(x.device)
+            tc_loss_sum = torch.zeros(demo_loss.shape).to(x.device)
             for i in range(nclass):
                 D_z = self.discriminator(residuals_list[i].contiguous().view(batch_size, -1))
                 tc_loss = (D_z[:, :1] - D_z[:, 1:]).mean()
                 tc_loss_sum += tc_loss
+                break
 
-            loss = recon_loss + self.beta * kld_normal + self.gamma * kld_lap_sum + self.sigma * tc_loss_sum
+            loss = (recon_sum + self.beta * kld_normal + self.gamma * kld_lap_sum + self.sigma * tc_loss_sum)/nclass
+            
             self.log("train_elbo_loss", loss)
-            self.log("train_recon_loss", recon_loss)
+            self.log("train_recon_loss", recon_sum)
             self.log("train_kld_normal", kld_normal)
             self.log("train_kld_laplace", kld_lap_sum)
             self.log("v_tc_loss", tc_loss_sum)
@@ -318,22 +323,25 @@ class SRNNSyntheticNS(pl.LightningModule):
                 ones = torch.ones(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
                 zeros = torch.zeros(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
                 zs_perm, _, _ = self.forward(batch['s2'])
-                zs_perm = zs_perm[...,i].reshape(batch_size, length, self.z_dim)
+                zs_perm = zs_perm[...,i]
                 residuals_perm, _ = self.transition_prior(zs_perm)
                 residuals_perm = permute_dims(residuals_perm.contiguous().view(batch_size, -1)).detach()
                 D_z_pperm = self.discriminator(residuals_perm)
                 D_tc_loss = 0.5*(F.cross_entropy(D_z, zeros) + F.cross_entropy(D_z_pperm, ones))            
                 D_tc_loss_sum += D_tc_loss
+                break
             
             self.log("d_tc_loss", D_tc_loss_sum)
 
             return D_tc_loss_sum
     
     def validation_step(self, batch, batch_idx):
-        x, y, c = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
+        x, y, ct = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
         batch_size, length, _, nclass = x.shape
+
         x_recon_list = []; zs_list = []
         mus_list = []; logvars_list = []
+
         for i in range(nclass):
             x_flat = x[...,i].view(-1, self.input_dim)
             # Inference
@@ -346,13 +354,11 @@ class SRNNSyntheticNS(pl.LightningModule):
             elif self.infer_mode == 'F':
                 x_recon, mus, logvars, zs = self.net(x_flat)
             
-            x_recon_list.append(x_recon.cpu().numpy()); mus_list.append(mus.cpu().numpy()); 
-            logvars_list.append(logvars.cpu().numpy()); zs_list.append(zs.cpu().numpy()); 
+            x_recon_list.append(x_recon); mus_list.append(mus); 
+            logvars_list.append(logvars); zs_list.append(zs); 
         
-        x_recon = torch.from_numpy(np.array(x_recon_list).transpose(1,2,0)).to(x.device)
-        mus = torch.from_numpy(np.array(mus_list).transpose(1,2,3,0)).to(x.device)
-        logvars = torch.from_numpy(np.array(logvars_list).transpose(1,2,3,0)).to(x.device)
-        zs = torch.from_numpy(np.array(zs_list).transpose(1,2,3,0)).to(x.device)
+        x_recon = torch.cat(x_recon_list, dim=0); mus = torch.cat(mus_list, dim=0)
+        logvars = torch.cat(logvars_list, dim=0); zs = torch.cat(zs_list, dim=0)
 
         # Reshape to time-series format
         x_recon = x_recon.view(batch_size, length, self.input_dim, nclass)
@@ -361,20 +367,29 @@ class SRNNSyntheticNS(pl.LightningModule):
         zs = zs.reshape(batch_size, length, self.z_dim, nclass)
 
         # VAE ELBO loss: recon_loss + kld_loss
-        recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
-        (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
+        demo_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist)
+        recon_sum = torch.zeros(demo_loss.shape).to(x.device)
+        for i in range(nclass):
+            recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
+            (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
+            recon_sum += recon_loss
+            break
 
         q_dist = D.Normal(mus, torch.abs(torch.exp(logvars / 2)))
         log_qz = q_dist.log_prob(zs)
 
         # Past KLD
-        p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag]), torch.ones_like(logvars[:,:self.lag]))
-        log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag]),dim=-1),dim=-1)
-        log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag],dim=-1),dim=-1)
-        kld_normal = log_qz_normal - log_pz_normal
-        kld_normal = kld_normal.mean()
+        kld_normal_sum = torch.zeros(demo_loss.shape).to(x.device)
+        for i in range(nclass):
+            p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag,:,i]), torch.ones_like(logvars[:,:self.lag,:,i]))
+            log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag,:,i]),dim=-1),dim=-1)
+            log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag,:,i],dim=-1),dim=-1)
+            kld_normal = log_qz_normal - log_pz_normal
+            kld_normal = kld_normal.mean()
+            kld_normal_sum += kld_normal
+            break
         # Future KLD
-        kld_lap_sum = torch.zeros(recon_loss.shape).to(x.device)
+        kld_lap_sum = torch.zeros(demo_loss.shape).to(x.device)
         for i in range(nclass):
             sum_log_abs_det_jacobians = 0
             log_qz_laplace = log_qz[:, self.lag:, :, i]
@@ -389,17 +404,22 @@ class SRNNSyntheticNS(pl.LightningModule):
             kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
             kld_laplace = kld_laplace.mean()
             kld_lap_sum += kld_laplace
+            break
         
-        loss = recon_loss + self.beta * kld_normal + self.gamma * kld_lap_sum
+        loss = (recon_sum + self.beta * kld_normal_sum + self.gamma * kld_lap_sum)/nclass
 
-        zt_recon = mus.reshape(-1, self.z_dim).T.detach().cpu().numpy()
-        zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
-        mcc = compute_mcc(zt_recon, zt_true, self.correlation)
+        mcc_sum = 0
+        for i in range(nclass):
+            zt_recon = mus[...,i].reshape(-1, self.z_dim).T.detach().cpu().numpy()
+            zt_true = batch['s1']["yt"][...,i].view(-1, self.z_dim).T.detach().cpu().numpy()
+            mcc = compute_mcc(zt_recon, zt_true, self.correlation)
+            mcc_sum += mcc
+            break
 
-        self.log("val_mcc", mcc) 
+        self.log("val_mcc", mcc_sum/nclass) 
         self.log("val_elbo_loss", loss)
-        self.log("val_recon_loss", recon_loss)
-        self.log("val_kld_normal", kld_normal)
+        self.log("val_recon_loss", recon_sum)
+        self.log("val_kld_normal", kld_normal_sum)
         self.log("val_kld_laplace", kld_lap_sum)
 
         return loss

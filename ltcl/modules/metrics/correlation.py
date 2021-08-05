@@ -18,7 +18,7 @@ def correlation(x, y, method='Pearson'):
          method: correlation method ('Pearson' or 'Spearman')
      """
 
-    print("Calculating correlation...")
+    # print("Calculating correlation...")
 
     x = x.copy()
     y = y.copy()

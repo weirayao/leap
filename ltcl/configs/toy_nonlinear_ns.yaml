@@ -30,9 +30,9 @@ VAE:
     LENGTH: 4
     NCLASS: 3
     TRANS_PRIOR: 'PNL'
-    LR: 0.0005 # 0.0001
-    BETA: 0.003 # 0.0001
-    GAMMA: 0.009 # 0.000001
+    LR: 0.0005
+    BETA: 0.003
+    GAMMA: 0.009
     SIGMA: 0.000001
     INPUT_DIM: 8
     LATENT_DIM: 8
