@@ -570,7 +570,7 @@ def nonlinear_nonGaussian_ts():
 def nonlinear_ns():
     lags = 2
     Nlayer = 3
-    length = 4
+    length = 1
     Nclass = 3
     condList = []
     negSlope = 0.2
@@ -578,7 +578,7 @@ def nonlinear_ns():
     transitions = []
     batch_size = 50000
     Niter4condThresh = 1e4
-    noise_scale = [0.1, 0.1, 0.1] 
+    noise_scale = [0.05, 0.1, 0.15] 
 
     path = os.path.join(root_dir, "nonlinear_ns")
     os.makedirs(path, exist_ok=True)
@@ -602,14 +602,14 @@ def nonlinear_ns():
         A = ortho_group.rvs(latent_size)  # generateUniformMat( Ncomp, condThresh )
         mixingList.append(A)
 
-    y_l = np.random.normal(0, 1, (batch_size, lags, latent_size))
-    y_l = (y_l - np.mean(y_l, axis=0 ,keepdims=True)) / np.std(y_l, axis=0 ,keepdims=True)
-
     yt = []; xt = []; ct = []
     yt_ns = []; xt_ns = []; ct_ns = []
 
     # Mixing function
     for j in range(Nclass):
+        ct.append(j * np.ones(batch_size))
+        y_l = np.random.normal(0, 1, (batch_size, lags, latent_size))
+        y_l = (y_l - np.mean(y_l, axis=0 ,keepdims=True)) / np.std(y_l, axis=0 ,keepdims=True)
         
         # Initialize the dataset
         for i in range(lags):
@@ -621,7 +621,6 @@ def nonlinear_ns():
         x_l = np.copy(mixedDat)
         for i in range(lags):
             xt.append(x_l[:,i,:])
-            ct.append(j)
             
         # Generate time series dataset
         for i in range(length):
@@ -639,17 +638,16 @@ def nonlinear_ns():
                 mixedDat = np.dot(mixedDat, mixingList[l])
             x_t = np.copy(mixedDat)
             xt.append(x_t)
-            ct.append(j)
 
             y_l = np.concatenate((y_l, y_t[:,np.newaxis,:]),axis=1)[:,1:,:]
         
-        yt = np.array(yt).transpose(1,0,2); xt = np.array(xt).transpose(1,0,2); ct = np.array(ct)
+        yt = np.array(yt).transpose(1,0,2); xt = np.array(xt).transpose(1,0,2); ct = np.array(ct).transpose(1,0)
         yt_ns.append(yt); xt_ns.append(xt); ct_ns.append(ct)
         yt = []; xt = []; ct = []
 
-    yt_ns = np.array(yt_ns).transpose(1,2,3,0)
-    xt_ns = np.array(xt_ns).transpose(1,2,3,0)
-    ct_ns = np.broadcast_to(np.array(ct_ns)[..., None],np.array(ct_ns).shape+(batch_size,)).transpose(2,1,0)
+    yt_ns = np.array(yt_ns).reshape(Nclass*batch_size,-1,latent_size)
+    xt_ns = np.array(xt_ns).reshape(Nclass*batch_size,-1,latent_size)
+    ct_ns = np.array(ct_ns).reshape(Nclass*batch_size,-1)
 
     np.savez(os.path.join(path, "data"), 
             yt = yt_ns, 
