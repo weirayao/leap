@@ -27,7 +27,7 @@ VAE:
     EPOCHS: 200
     N_VAL_SAMPLES: 1200
     LAG: 2
-    LENGTH: 4
+    LENGTH: 1
     NCLASS: 3
     TRANS_PRIOR: 'PNL'
     LR: 0.0005

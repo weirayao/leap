@@ -645,9 +645,9 @@ def nonlinear_ns():
         yt_ns.append(yt); xt_ns.append(xt); ct_ns.append(ct)
         yt = []; xt = []; ct = []
 
-    yt_ns = np.array(yt_ns).reshape(Nclass*batch_size,-1,latent_size)
-    xt_ns = np.array(xt_ns).reshape(Nclass*batch_size,-1,latent_size)
-    ct_ns = np.array(ct_ns).reshape(Nclass*batch_size,-1)
+    yt_ns = np.vstack(yt_ns)
+    xt_ns = np.vstack(xt_ns)
+    ct_ns = np.vstack(ct_ns)
 
     np.savez(os.path.join(path, "data"), 
             yt = yt_ns, 
