@@ -9,12 +9,12 @@ import torch.nn.init as init
 import pytorch_lightning as pl
 import torch.distributions as D
 from torch.nn import functional as F
-from .components.transition import PNLTransitionPrior, MBDTransitionPrior
-from .components.mlp import MLPEncoder, MLPDecoder, Inference
-from .components.tc import Discriminator, permute_dims
 from .components.beta import BetaVAE_MLP
 from .metrics.correlation import compute_mcc
+from .components.tc import Discriminator, permute_dims
 from .components.transforms import ComponentWiseSpline
+from .components.mlp import MLPEncoder, MLPDecoder, Inference
+from .components.transition import PNLTransitionPrior, MBDTransitionPrior
 from .components.mlp import MLPEncoder, MLPDecoder, NLayerLeakyMLP, NLayerLeakyMLP
 from .components.transition import LinearTransitionPrior, PNLTransitionPrior, INTransitionPrior
 
@@ -100,7 +100,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         elif trans_prior == 'PNL':
             self.transition_prior = PNLTransitionPrior(lags=lag, 
                                                        latent_size=z_dim, 
-                                                       num_layers=1, 
+                                                       num_layers=3, 
                                                        hidden_dim=hidden_dim)
         elif trans_prior == 'IN':
             self.transition_prior = INTransitionPrior()
@@ -119,6 +119,7 @@ class SRNNSyntheticNS(pl.LightningModule):
 
                 print("Load pretrained spline flow", flush=True)
             self.spline_list.append(self.spline)
+        self.dictionary = {0:self.spline_list[0], 1:self.spline_list[1], 2:self.spline_list[2]}
 
         # FactorVAE
         self.discriminator = Discriminator(z_dim = z_dim*self.length)
@@ -160,17 +161,16 @@ class SRNNSyntheticNS(pl.LightningModule):
         zs = zs[:,self.lag:]
         mus = torch.squeeze(torch.stack(mus, dim=1))
         logvars = torch.squeeze(torch.stack(logvars, dim=1))
-        # logvars = torch.nn.functional.softplus(logvars)
         return zs, mus, logvars
     
-    def reparameterize(self, mu, logvar, random_sampling=True):
+    def reparameterize(self, mean, logvar, random_sampling=True):
         if random_sampling:
             eps = torch.randn_like(logvar)
             std = torch.exp(0.5*logvar)
-            z = mu + eps*std
+            z = mean + eps*std
             return z
         else:
-            return mu
+            return mean
 
     def reconstruction_loss(self, x, x_recon, distribution):
         batch_size = x.size(0)
@@ -190,237 +190,157 @@ class SRNNSyntheticNS(pl.LightningModule):
         return recon_loss
 
     def forward(self, batch):
-        x, y, c = batch['xt'], batch['yt'], batch['ct']
-        batch_size, length, _, nclass = x.shape
-        x_recon_list = []; zs_list = []
-        mus_list = []; logvars_list = []
-        for i in range(nclass):
-            x_flat = x[...,i].view(-1, self.input_dim)
-            # Inference
-            if self.infer_mode == 'R':
-                ft = self.enc(x_flat)
-                ft = ft.view(batch_size, length, -1)
-                zs, mus, logvars = self.inference(ft, random_sampling=True)
-            elif self.infer_mode == 'F':
-                _, mus, logvars, zs = self.net(x_flat)
-            
-            mus_list.append(mus); logvars_list.append(logvars); zs_list.append(zs); 
-        
-        mus = torch.cat(mus_list, dim=0)
-        logvars = torch.cat(logvars_list, dim=0)
-        zs = torch.cat(zs_list, dim=0)
-
-        # Reshape to time-series format
-        mus = mus.reshape(batch_size, length, self.z_dim, nclass)
-        logvars  = logvars.reshape(batch_size, length, self.z_dim, nclass)
-        zs = zs.reshape(batch_size, length, self.z_dim, nclass)
-        
+        x, y = batch['xt'], batch['yt']
+        batch_size, length, _ = x.shape
+        x_flat = x.view(-1, self.input_dim)
+        if self.infer_mode == 'R':
+            ft = self.enc(x_flat)
+            ft = ft.view(batch_size, length, -1)
+            zs, mus, logvars = self.inference(ft, random_sampling=True)
+        elif self.infer_mode == 'F':
+            _, mus, logvars, zs = self.net(x_flat)
         return zs, mus, logvars       
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        x, y, c = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
-        batch_size, length, _, nclass = x.shape
-
-        x_recon_list = []; zs_list = []
-        mus_list = []; logvars_list = []
-
-        for i in range(nclass):
-            x_flat = x[...,i].view(-1, self.input_dim)
-            # Inference
-            if self.infer_mode == 'R':
-                ft = self.enc(x_flat)
-                ft = ft.view(batch_size, length, -1)
-                zs, mus, logvars = self.inference(ft)
-                zs_flat = zs.contiguous().view(-1, self.z_dim)
-                x_recon = self.dec(zs_flat)
-            elif self.infer_mode == 'F':
-                x_recon, mus, logvars, zs = self.net(x_flat)
-            
-            x_recon_list.append(x_recon); mus_list.append(mus); 
-            logvars_list.append(logvars); zs_list.append(zs); 
+        x, y, ct = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
+        batch_size, length, _ = x.shape; ct = torch.squeeze(ct).to(torch.int64)
+        x_flat = x.view(-1, self.input_dim)
+        # Inference
+        if self.infer_mode == 'R':
+            ft = self.enc(x_flat)
+            ft = ft.view(batch_size, length, -1)
+            zs, mus, logvars = self.inference(ft)
+            zs_flat = zs.contiguous().view(-1, self.z_dim)
+            x_recon = self.dec(zs_flat)
+        elif self.infer_mode == 'F':
+            x_recon, mus, logvars, zs = self.net(x_flat)
         
-        x_recon = torch.cat(x_recon_list, dim=0); mus = torch.cat(mus_list, dim=0)
-        logvars = torch.cat(logvars_list, dim=0); zs = torch.cat(zs_list, dim=0)
-
         # Reshape to time-series format
-        x_recon = x_recon.view(batch_size, length, self.input_dim, nclass)
-        mus = mus.reshape(batch_size, length, self.z_dim, nclass)
-        logvars  = logvars.reshape(batch_size, length, self.z_dim, nclass)
-        zs = zs.reshape(batch_size, length, self.z_dim, nclass)
+        x_recon = x_recon.view(batch_size, length, self.input_dim)
+        mus = mus.reshape(batch_size, length, self.z_dim)
+        logvars  = logvars.reshape(batch_size, length, self.z_dim)
+        zs = zs.reshape(batch_size, length, self.z_dim)
 
         # VAE ELBO loss: recon_loss + kld_loss
-        demo_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist)
-        recon_sum = torch.zeros(demo_loss.shape).to(x.device)
-        for i in range(nclass):
-            recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
-            (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
-            recon_sum += recon_loss
-            break
-        
-        q_dist = D.Normal(mus, torch.abs(torch.exp(logvars / 2)))
+        recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
+        (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
+        q_dist = D.Normal(mus, torch.exp(logvars / 2))
         log_qz = q_dist.log_prob(zs)
-        # except:
-        #     pdb.set_trace()
         # Past KLD
-        kld_normal_sum = torch.zeros(demo_loss.shape).to(x.device)
-        for i in range(nclass):
-            p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag,:,i]), torch.ones_like(logvars[:,:self.lag,:,i]))
-            log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag,:,i]),dim=-1),dim=-1)
-            log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag,:,i],dim=-1),dim=-1)
-            kld_normal = log_qz_normal - log_pz_normal
-            kld_normal = kld_normal.mean()
-            kld_normal_sum += kld_normal
-            break
+        p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag]), torch.ones_like(logvars[:,:self.lag]))
+        log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag]),dim=-1),dim=-1)
+        log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag],dim=-1),dim=-1)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = kld_normal.mean()
         # Future KLD
-        residuals_list = []
-        kld_lap_sum = torch.zeros(demo_loss.shape).to(x.device)
-        for i in range(nclass):
-            sum_log_abs_det_jacobians = 0
-            log_qz_laplace = log_qz[:, self.lag:, :, i]
-            residuals, logabsdet = self.transition_prior(zs[...,i])
-            sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-            
-            es, logabsdet = self.spline_list[i].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-            es = es.reshape(batch_size, length-self.lag, self.z_dim)
-            logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
-            sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-            log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
-            kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
-            kld_laplace = kld_laplace.mean()
-            kld_lap_sum += kld_laplace
-            residuals_list.append(residuals)
-            break
-    
+        log_qz_laplace = log_qz[:,self.lag:]
+        residuals, logabsdet = self.transition_prior(zs)
+        sum_log_abs_det_jacobians = 0
+        one_hot = F.one_hot(ct, num_classes=self.nclass)
+        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        out = [self.dictionary[idx].to(x.device)(torch.unsqueeze(residuals.contiguous().view(-1, self.z_dim)[i],0)) for i, idx in enumerate(indices)]
+        es = torch.cat([item[0] for item in out])
+        logabsdet = torch.cat([item[1] for item in out])
+        es = es.reshape(batch_size, length-self.lag, self.z_dim)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
+        kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
+        kld_laplace = kld_laplace.mean()
+
         # VAE training
         if optimizer_idx == 0:
             for p in self.discriminator.parameters():
                 p.requires_grad = False
-            tc_loss_sum = torch.zeros(demo_loss.shape).to(x.device)
-            for i in range(nclass):
-                D_z = self.discriminator(residuals_list[i].contiguous().view(batch_size, -1))
-                tc_loss = (D_z[:, :1] - D_z[:, 1:]).mean()
-                tc_loss_sum += tc_loss
-                break
-
-            loss = (recon_sum + self.beta * kld_normal + self.gamma * kld_lap_sum + self.sigma * tc_loss_sum)/nclass
-            
+            D_z = self.discriminator(residuals.contiguous().view(batch_size, -1))
+            tc_loss = (D_z[:, :1] - D_z[:, 1:]).mean()
+            loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace + self.sigma * tc_loss
             self.log("train_elbo_loss", loss)
-            self.log("train_recon_loss", recon_sum)
+            self.log("train_recon_loss", recon_loss)
             self.log("train_kld_normal", kld_normal)
-            self.log("train_kld_laplace", kld_lap_sum)
-            self.log("v_tc_loss", tc_loss_sum)
+            self.log("train_kld_laplace", kld_laplace)
+            self.log("v_tc_loss", tc_loss)
             return loss
 
         # Discriminator training
         if optimizer_idx == 1:
             for p in self.discriminator.parameters():
                 p.requires_grad = True
-            D_tc_loss_sum = torch.zeros(recon_loss.shape).to(x.device)
-            for i in range(nclass):
-                residuals = residuals_list[i].detach()
-                D_z = self.discriminator(residuals.contiguous().view(batch_size, -1))
-                # Permute the other data batch
-                ones = torch.ones(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
-                zeros = torch.zeros(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
-                zs_perm, _, _ = self.forward(batch['s2'])
-                zs_perm = zs_perm[...,i]
-                residuals_perm, _ = self.transition_prior(zs_perm)
-                residuals_perm = permute_dims(residuals_perm.contiguous().view(batch_size, -1)).detach()
-                D_z_pperm = self.discriminator(residuals_perm)
-                D_tc_loss = 0.5*(F.cross_entropy(D_z, zeros) + F.cross_entropy(D_z_pperm, ones))            
-                D_tc_loss_sum += D_tc_loss
-                break
-            
-            self.log("d_tc_loss", D_tc_loss_sum)
-
-            return D_tc_loss_sum
+            residuals = residuals.detach()
+            D_z = self.discriminator(residuals.contiguous().view(batch_size, -1))
+            # Permute the other data batch
+            ones = torch.ones(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
+            zeros = torch.zeros(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
+            zs_perm, _, _ = self.forward(batch['s2'])
+            zs_perm = zs_perm.reshape(batch_size, length, self.z_dim)
+            residuals_perm, _ = self.transition_prior(zs_perm)
+            residuals_perm = permute_dims(residuals_perm.contiguous().view(batch_size, -1)).detach()
+            D_z_pperm = self.discriminator(residuals_perm)
+            D_tc_loss = 0.5*(F.cross_entropy(D_z, zeros) + F.cross_entropy(D_z_pperm, ones))            
+            self.log("d_tc_loss", D_tc_loss)
+            return D_tc_loss
     
     def validation_step(self, batch, batch_idx):
         x, y, ct = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
-        batch_size, length, _, nclass = x.shape
-
-        x_recon_list = []; zs_list = []
-        mus_list = []; logvars_list = []
-
-        for i in range(nclass):
-            x_flat = x[...,i].view(-1, self.input_dim)
-            # Inference
-            if self.infer_mode == 'R':
-                ft = self.enc(x_flat)
-                ft = ft.view(batch_size, length, -1)
-                zs, mus, logvars = self.inference(ft)
-                zs_flat = zs.contiguous().view(-1, self.z_dim)
-                x_recon = self.dec(zs_flat)
-            elif self.infer_mode == 'F':
-                x_recon, mus, logvars, zs = self.net(x_flat)
-            
-            x_recon_list.append(x_recon); mus_list.append(mus); 
-            logvars_list.append(logvars); zs_list.append(zs); 
+        batch_size, length, _ = x.shape; ct = torch.squeeze(ct).to(torch.int64)
+        x_flat = x.view(-1, self.input_dim)
+        # Inference
+        if self.infer_mode == 'R':
+            ft = self.enc(x_flat)
+            ft = ft.view(batch_size, length, -1)
+            zs, mus, logvars = self.inference(ft)
+            zs_flat = zs.contiguous().view(-1, self.z_dim)
+            x_recon = self.dec(zs_flat)
+        elif self.infer_mode == 'F':
+            x_recon, mus, logvars, zs = self.net(x_flat)
         
-        x_recon = torch.cat(x_recon_list, dim=0); mus = torch.cat(mus_list, dim=0)
-        logvars = torch.cat(logvars_list, dim=0); zs = torch.cat(zs_list, dim=0)
-
         # Reshape to time-series format
-        x_recon = x_recon.view(batch_size, length, self.input_dim, nclass)
-        mus = mus.reshape(batch_size, length, self.z_dim, nclass)
-        logvars  = logvars.reshape(batch_size, length, self.z_dim, nclass)
-        zs = zs.reshape(batch_size, length, self.z_dim, nclass)
+        x_recon = x_recon.view(batch_size, length, self.input_dim)
+        mus = mus.reshape(batch_size, length, self.z_dim)
+        logvars  = logvars.reshape(batch_size, length, self.z_dim)
+        zs = zs.reshape(batch_size, length, self.z_dim)
 
         # VAE ELBO loss: recon_loss + kld_loss
-        demo_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist)
-        recon_sum = torch.zeros(demo_loss.shape).to(x.device)
-        for i in range(nclass):
-            recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
-            (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
-            recon_sum += recon_loss
-            break
-
-        q_dist = D.Normal(mus, torch.abs(torch.exp(logvars / 2)))
+        recon_loss = self.reconstruction_loss(x[:,:self.lag], x_recon[:,:self.lag], self.decoder_dist) + \
+        (self.reconstruction_loss(x[:,self.lag:], x_recon[:,self.lag:], self.decoder_dist))/(length-self.lag)
+        q_dist = D.Normal(mus, torch.exp(logvars / 2))
         log_qz = q_dist.log_prob(zs)
-
         # Past KLD
-        kld_normal_sum = torch.zeros(demo_loss.shape).to(x.device)
-        for i in range(nclass):
-            p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag,:,i]), torch.ones_like(logvars[:,:self.lag,:,i]))
-            log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag,:,i]),dim=-1),dim=-1)
-            log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag,:,i],dim=-1),dim=-1)
-            kld_normal = log_qz_normal - log_pz_normal
-            kld_normal = kld_normal.mean()
-            kld_normal_sum += kld_normal
-            break
+        p_dist = D.Normal(torch.zeros_like(mus[:,:self.lag]), torch.ones_like(logvars[:,:self.lag]))
+        log_pz_normal = torch.sum(torch.sum(p_dist.log_prob(zs[:,:self.lag]),dim=-1),dim=-1)
+        log_qz_normal = torch.sum(torch.sum(log_qz[:,:self.lag],dim=-1),dim=-1)
+        kld_normal = log_qz_normal - log_pz_normal
+        kld_normal = kld_normal.mean()
         # Future KLD
-        kld_lap_sum = torch.zeros(demo_loss.shape).to(x.device)
-        for i in range(nclass):
-            sum_log_abs_det_jacobians = 0
-            log_qz_laplace = log_qz[:, self.lag:, :, i]
-            residuals, logabsdet = self.transition_prior(zs[...,i])
-            sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-            # pdb.set_trace()
-            es, logabsdet = self.spline_list[i].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-            es = es.reshape(batch_size, length-self.lag, self.z_dim)
-            logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
-            sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-            log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
-            kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
-            kld_laplace = kld_laplace.mean()
-            kld_lap_sum += kld_laplace
-            break
+        log_qz_laplace = log_qz[:,self.lag:]
+        residuals, logabsdet = self.transition_prior(zs)  
+        sum_log_abs_det_jacobians = 0
+        one_hot = F.one_hot(ct, num_classes=self.nclass)
+        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        out = [self.dictionary[idx].to(x.device)(torch.unsqueeze(residuals.contiguous().view(-1, self.z_dim)[i],0)) for i, idx in enumerate(indices)]
+        es = torch.cat([item[0] for item in out])
+        logabsdet = torch.cat([item[1] for item in out])
+        es = es.reshape(batch_size, length-self.lag, self.z_dim)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
+        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
+        kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
+        kld_laplace = kld_laplace.mean()
         
-        loss = (recon_sum + self.beta * kld_normal_sum + self.gamma * kld_lap_sum)/nclass
+        loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace
 
-        mcc_sum = 0
-        for i in range(nclass):
-            zt_recon = mus[...,i].reshape(-1, self.z_dim).T.detach().cpu().numpy()
-            zt_true = batch['s1']["yt"][...,i].view(-1, self.z_dim).T.detach().cpu().numpy()
-            mcc = compute_mcc(zt_recon, zt_true, self.correlation)
-            mcc_sum += mcc
-            break
+        # Compute Mean Correlation Coefficient (MCC)
+        zt_recon = mus.view(-1, self.z_dim).T.detach().cpu().numpy()
+        zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
+        mcc = compute_mcc(zt_recon, zt_true, self.correlation)
 
-        self.log("val_mcc", mcc_sum/nclass) 
+        self.log("val_mcc", mcc) 
         self.log("val_elbo_loss", loss)
-        self.log("val_recon_loss", recon_sum)
-        self.log("val_kld_normal", kld_normal_sum)
-        self.log("val_kld_laplace", kld_lap_sum)
+        self.log("val_recon_loss", recon_loss)
+        self.log("val_kld_normal", kld_normal)
+        self.log("val_kld_laplace", kld_laplace)
 
         return loss
     
@@ -430,18 +350,15 @@ class SRNNSyntheticNS(pl.LightningModule):
             eps, _ = self.spline.inverse(e)
         return eps
 
-    # def reconstruct(self, batch):
-    #     x, y = batch['xt'], batch['yt']
-    #     batch_size, length, _ = x.shape
-    #     zs, mus, logvars = self.forward(batch)
-    #     zs_flat = zs.contiguous().view(-1, self.z_dim)
-    #     x_recon = self.dec(zs_flat)
-    #     x_recon = x_recon.view(batch_size, length, self.input_dim)       
-    #     return x_recon
+    def reconstruct(self, batch):
+        zs, mus, logvars = self.forward(batch)
+        zs_flat = zs.contiguous().view(-1, self.z_dim)
+        x_recon = self.dec(zs_flat)
+        x_recon = x_recon.view(batch_size, self.length, self.input_dim)       
+        return x_recon
 
     def configure_optimizers(self):
         opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999))
-        opt_d = torch.optim.Adam(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2, betas=(0.9, 0.999))
-        # opt_d = torch.optim.SGD(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
+        opt_d = torch.optim.SGD(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
         # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [opt_v, opt_d], []
