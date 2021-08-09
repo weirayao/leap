@@ -237,9 +237,20 @@ class SRNNSyntheticNS(pl.LightningModule):
         residuals, logabsdet = self.transition_prior(zs)
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
+        '''
+        es1, logabsdet1 = self.dictionary[0].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
+        es2, logabsdet2 = self.dictionary[1].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
+        es3, logabsdet3 = self.dictionary[2].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
+        out1 = torch.stack([es1, es2, es3], axis=1)
+        one_hot_out1 = one_hot.unsqueeze(2).repeat(1,1,8)
+        es = torch.sum(out1*one_hot_out1, 1)
+        one_hot_out2 = one_hot
+        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1)
+        logabsdet = torch.sum(out2*one_hot_out2, 1)
+        '''
         indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-        out = [self.dictionary[idx].to(x.device)(torch.unsqueeze(residuals.contiguous().view(-1, self.z_dim)[i],0)) for i, idx in enumerate(indices)]
+        out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
         es = torch.cat([item[0] for item in out])
         logabsdet = torch.cat([item[1] for item in out])
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
@@ -317,13 +328,24 @@ class SRNNSyntheticNS(pl.LightningModule):
         residuals, logabsdet = self.transition_prior(zs)  
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
+        '''
+        es1, logabsdet1 = self.dictionary[0].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
+        es2, logabsdet2 = self.dictionary[1].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
+        es3, logabsdet3 = self.dictionary[2].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
+        out1 = torch.stack([es1, es2, es3], axis=1)
+        one_hot_out1 = one_hot.unsqueeze(2).repeat(1,1,8)
+        es = torch.sum(out1*one_hot_out1, 1)
+        one_hot_out2 = one_hot
+        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1)
+        logabsdet = torch.sum(out2*one_hot_out2, 1)
+        '''
         indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-        out = [self.dictionary[idx].to(x.device)(torch.unsqueeze(residuals.contiguous().view(-1, self.z_dim)[i],0)) for i, idx in enumerate(indices)]
+        out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
         es = torch.cat([item[0] for item in out])
         logabsdet = torch.cat([item[1] for item in out])
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
-        logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size, length-self.lag), dim=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
         log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
         kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
