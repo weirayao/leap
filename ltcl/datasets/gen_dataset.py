@@ -570,7 +570,7 @@ def nonlinear_nonGaussian_ts():
 def nonlinear_ns():
     lags = 2
     Nlayer = 3
-    length = 1
+    length = 4
     Nclass = 3
     condList = []
     negSlope = 0.2
