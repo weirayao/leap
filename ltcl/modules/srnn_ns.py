@@ -248,11 +248,32 @@ class SRNNSyntheticNS(pl.LightningModule):
         out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1)
         logabsdet = torch.sum(out2*one_hot_out2, 1)
         '''
+        '''
         indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
         out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
         es = torch.cat([item[0] for item in out])
         logabsdet = torch.cat([item[1] for item in out])
+        '''
+        indices = torch.argmax(one_hot, axis=1)
+        f1_indices = (indices==0).nonzero(as_tuple=False).squeeze()
+        f1_input = residuals[f1_indices]
+        f2_indices = (indices==1).nonzero(as_tuple=False).squeeze()
+        f2_input = residuals[f2_indices]
+        f3_indices = (indices==2).nonzero(as_tuple=False).squeeze()
+        f3_input = residuals[f3_indices]
+        f1_out1, f1_out2 = self.dictionary[0].to(x.device)(f1_input.contiguous().view(-1, self.z_dim))
+        f2_out1, f2_out2 = self.dictionary[1].to(x.device)(f2_input.contiguous().view(-1, self.z_dim))
+        f3_out1, f3_out2 = self.dictionary[2].to(x.device)(f3_input.contiguous().view(-1, self.z_dim))
+        es = torch.empty(residuals.shape).to(x.device)
+        es[f1_indices] = f1_out1.reshape(-1, length-self.lag, self.z_dim)
+        es[f2_indices] = f2_out1.reshape(-1, length-self.lag, self.z_dim)
+        es[f3_indices] = f3_out1.reshape(-1, length-self.lag, self.z_dim)
+        logabsdet = torch.empty(batch_size, length-self.lag).to(x.device)
+        logabsdet[f1_indices] = f1_out2.reshape(-1, length-self.lag)
+        logabsdet[f2_indices] = f2_out2.reshape(-1, length-self.lag)
+        logabsdet[f3_indices] = f3_out2.reshape(-1, length-self.lag)
+
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
         logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
@@ -339,11 +360,33 @@ class SRNNSyntheticNS(pl.LightningModule):
         out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1)
         logabsdet = torch.sum(out2*one_hot_out2, 1)
         '''
+        '''
         indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
         out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
         es = torch.cat([item[0] for item in out])
         logabsdet = torch.cat([item[1] for item in out])
+        pdb.set_trace()
+        '''
+        indices = torch.argmax(one_hot, axis=1)
+        f1_indices = (indices==0).nonzero(as_tuple=False).squeeze()
+        f1_input = residuals[f1_indices]
+        f2_indices = (indices==1).nonzero(as_tuple=False).squeeze()
+        f2_input = residuals[f2_indices]
+        f3_indices = (indices==2).nonzero(as_tuple=False).squeeze()
+        f3_input = residuals[f3_indices]
+        f1_out1, f1_out2 = self.dictionary[0].to(x.device)(f1_input.contiguous().view(-1, self.z_dim))
+        f2_out1, f2_out2 = self.dictionary[1].to(x.device)(f2_input.contiguous().view(-1, self.z_dim))
+        f3_out1, f3_out2 = self.dictionary[2].to(x.device)(f3_input.contiguous().view(-1, self.z_dim))
+        es = torch.empty(residuals.shape).to(x.device)
+        es[f1_indices] = f1_out1.reshape(-1, length-self.lag, self.z_dim)
+        es[f2_indices] = f2_out1.reshape(-1, length-self.lag, self.z_dim)
+        es[f3_indices] = f3_out1.reshape(-1, length-self.lag, self.z_dim)
+        logabsdet = torch.empty(batch_size, length-self.lag).to(x.device)
+        logabsdet[f1_indices] = f1_out2.reshape(-1, length-self.lag)
+        logabsdet[f2_indices] = f2_out2.reshape(-1, length-self.lag)
+        logabsdet[f3_indices] = f3_out2.reshape(-1, length-self.lag)
+        
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
         logabsdet = torch.sum(logabsdet.reshape(batch_size, length-self.lag), dim=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
