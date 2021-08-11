@@ -20,7 +20,7 @@ SPLINE:
     PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_ns.pth'
   
 VAE:
-    GPU: [0]
+    GPU: [1]
     CPU: 8
     TRAIN_BS: 32 # 64
     VAL_BS: 64 # 128

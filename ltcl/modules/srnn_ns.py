@@ -237,23 +237,23 @@ class SRNNSyntheticNS(pl.LightningModule):
         residuals, logabsdet = self.transition_prior(zs)
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
-        
-        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        '''        
+        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
         es = torch.cat([item[0] for item in out])
         logabsdet = torch.cat([item[1] for item in out])
         '''
+        '''
         es1, logabsdet1 = self.dictionary[0].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
         es2, logabsdet2 = self.dictionary[1].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
         es3, logabsdet3 = self.dictionary[2].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        out1 = torch.stack([es1, es2, es3], axis=1)
-        one_hot_out1 = one_hot.unsqueeze(2).repeat(length-self.lag,1,1,self.z_dim).view(out1.shape)
-        es = torch.sum(out1*one_hot_out1, 1)
-        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1)
-        one_hot_out2 = one_hot.repeat(length-self.lag,1,1).view(out2.shape)
-        logabsdet = torch.sum(out2*one_hot_out2, 1)
-        '''
+        one_hot_out1 = one_hot.unsqueeze(2).repeat(length-self.lag,1,1,self.z_dim)
+        out1 = torch.stack([es1, es2, es3], axis=1).view(one_hot_out1.shape)
+        es = torch.sum(out1*one_hot_out1, 2)
+        one_hot_out2 = one_hot.repeat(length-self.lag,1,1)
+        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1).view(one_hot_out2.shape)
+        logabsdet = torch.sum(out2*one_hot_out2, 2)
         '''
         indices = torch.argmax(one_hot, axis=1)
         f1_indices = (indices==0).nonzero(as_tuple=False).squeeze()
@@ -273,7 +273,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         logabsdet[f1_indices] = f1_out2.reshape(-1, length-self.lag)
         logabsdet[f2_indices] = f2_out2.reshape(-1, length-self.lag)
         logabsdet[f3_indices] = f3_out2.reshape(-1, length-self.lag)
-        '''
+        
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
         logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
@@ -349,25 +349,25 @@ class SRNNSyntheticNS(pl.LightningModule):
         residuals, logabsdet = self.transition_prior(zs)  
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
-        
-        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
+        '''
+        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
         out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
         es = torch.cat([item[0] for item in out])
         logabsdet = torch.cat([item[1] for item in out])
         # pdb.set_trace()
         '''
+        '''
         es1, logabsdet1 = self.dictionary[0].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
         es2, logabsdet2 = self.dictionary[1].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
         es3, logabsdet3 = self.dictionary[2].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        out1 = torch.stack([es1, es2, es3], axis=1)
-        one_hot_out1 = one_hot.unsqueeze(2).repeat(length-self.lag,1,1,self.z_dim).view(out1.shape)
-        es = torch.sum(out1*one_hot_out1, 1)
-        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1)
-        one_hot_out2 = one_hot.repeat(length-self.lag,1,1).view(out2.shape)
-        logabsdet = torch.sum(out2*one_hot_out2, 1)
+        one_hot_out1 = one_hot.unsqueeze(2).repeat(length-self.lag,1,1,self.z_dim)
+        out1 = torch.stack([es1, es2, es3], axis=1).view(one_hot_out1.shape)
+        es = torch.sum(out1*one_hot_out1, 2)
+        one_hot_out2 = one_hot.repeat(length-self.lag,1,1)
+        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1).view(one_hot_out2.shape)
+        logabsdet = torch.sum(out2*one_hot_out2, 2)
         # pdb.set_trace()
-        '''
         '''
         indices = torch.argmax(one_hot, axis=1)
         f1_indices = (indices==0).nonzero(as_tuple=False).squeeze()
@@ -388,7 +388,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         logabsdet[f2_indices] = f2_out2.reshape(-1, length-self.lag)
         logabsdet[f3_indices] = f3_out2.reshape(-1, length-self.lag)
         # pdb.set_trace()
-        '''
+        
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
         logabsdet = torch.sum(logabsdet.reshape(batch_size, length-self.lag), dim=1)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
