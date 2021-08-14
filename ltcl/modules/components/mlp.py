@@ -9,12 +9,12 @@ class NLayerLeakyMLP(nn.Module):
         for l in range(num_layers):
             if l == 0:
                 layers.append(nn.Linear(in_features, hidden_dim))
-                layers.append(nn.BatchNorm1d(hidden_dim))
-                layers.append(nn.ReLU())
+                # layers.append(nn.BatchNorm1d(hidden_dim))
+                layers.append(nn.LeakyReLU(0.2))
             else:
                 layers.append(nn.Linear(hidden_dim, hidden_dim))
-                layers.append(nn.BatchNorm1d(hidden_dim))
-                layers.append(nn.ReLU())
+                # layers.append(nn.BatchNorm1d(hidden_dim))
+                layers.append(nn.LeakyReLU(0.2))
         layers.append(nn.Linear(hidden_dim, out_features))
 
         self.net = nn.Sequential(*layers)

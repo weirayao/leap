@@ -578,7 +578,9 @@ def nonlinear_ns():
     transitions = []
     batch_size = 50000
     Niter4condThresh = 1e4
-    noise_scale = [0.05, 0.1, 0.15] 
+    noise_scale = [0.05, 0.1, 0.15] # (v1)
+    # noise_scale = [0.01, 0.1, 1]
+    # noise_scale = [0.01, 0.05, 0.1] 
 
     path = os.path.join(root_dir, "nonlinear_ns")
     os.makedirs(path, exist_ok=True)

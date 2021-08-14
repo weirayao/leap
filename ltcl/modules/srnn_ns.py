@@ -143,7 +143,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         ## transition: p(zt|z_tau)
         zs, mus, logvars = [], [], []
         for tau in range(self.lag):
-            zs.append(torch.ones((batch_size, self.z_dim), device=output.device))
+            zs.append(torch.zeros((batch_size, self.z_dim), device=output.device))
 
         for t in range(length):
             mid = torch.cat(zs[-self.lag:], dim=1)
@@ -395,7 +395,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
         kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
         kld_laplace = kld_laplace.mean()
-        
+
         loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace
 
         # Compute Mean Correlation Coefficient (MCC)
@@ -425,7 +425,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         return x_recon
 
     def configure_optimizers(self):
-        opt_v = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999))
-        opt_d = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
+        opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999))
+        opt_d = torch.optim.Adam(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
         # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [opt_v, opt_d], []
