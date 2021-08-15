@@ -2,8 +2,8 @@
 # Model Configurations  #
 #########################
 
-ROOT: '/home/yuewen/data/datasets/logs/cmu_wyao/data'
-LOG: '/home/yuewen/data/datasets/logs'
+ROOT: '/home/cmu_wyao/data'
+LOG: '/home/cmu_wyao/data/logs'
 DATASET: 'nonlinear_ns'
 
 SPLINE:
@@ -13,11 +13,11 @@ SPLINE:
     LR: 0.001
     CUDA: FALSE
     BS: 64
-    LATENT_DIM: 8
+    LATENT_DIM: 4
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_ns.pth'
+    PATH: '/home/cmu_wyao/spline_nonlinear_ns.pth'
   
 VAE:
     GPU: [1]
@@ -46,6 +46,6 @@ VAE:
 
 MCC:
     FREQ: 0.1
-    CORR: 'Pearson'
+    CORR: 'Spearman'
 
 SEED: 770

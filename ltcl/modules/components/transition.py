@@ -109,3 +109,40 @@ class INTransitionPrior(nn.Module):
     def __init__(self):
         raise NotImplementedError
 
+
+class NPTransitionPrior(nn.Module):
+
+    def __init__(
+        self, 
+        lags, 
+        latent_size, 
+        num_layers=3, 
+        hidden_dim=64):
+        super().__init__()
+        self.L = lags
+        # self.init_hiddens = nn.Parameter(0.01 * torch.randn(lags, latent_size))       
+        gs = [NLayerLeakyMLP(in_features=lags*latent_size+1, 
+                             out_features=1, 
+                             num_layers=num_layers, 
+                             hidden_dim=hidden_dim) for i in range(latent_size)]
+        
+        self.gs = nn.ModuleList(gs)
+    
+    def forward(self, x):
+        # x: [BS, T, D] -> [BS, T-L, L+1, D]
+        batch_size, length, input_dim = x.shape
+        # init_hiddens = self.init_hiddens.repeat(batch_size, 1, 1)
+        # x = torch.cat((init_hiddens, x), dim=1)
+        x = x.unfold(dimension = 1, size = self.L+1, step = 1)
+        x = torch.swapaxes(x, 2, 3)
+        shape = x.shape
+        x = x.reshape(-1, self.L+1, input_dim)
+        residuals = [ ]
+        log_abs_det_jacobian = 0
+        for i in range(input_dim):
+            residual = self.gs[i](x[:,:,i])
+            J = torch.log(torch.autograd.grad(residual, x[:,:,i]))
+            log_abs_det_jacobian += J
+            residuals.append(residual)
+        residuals = torch.cat(residuals, dim=-1)
+        return residuals, log_abs_det_jacobian

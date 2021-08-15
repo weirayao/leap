@@ -58,7 +58,6 @@ class ComponentWiseSpline(components.Transform):
         """f: data x -> latent u"""
         u, log_detJ = self.spline_op(x)
         log_detJ = torch.sum(log_detJ, dim=1)
-        self._cache_log_detJ = log_detJ
         return u, log_detJ
 
     def inverse(
@@ -67,7 +66,6 @@ class ComponentWiseSpline(components.Transform):
         """g: latent u > data x"""
         x, log_detJ = self.spline_op(u, inverse=True)
         log_detJ = torch.sum(log_detJ, dim=1)
-        self._cache_log_detJ = -log_detJ
         return x, log_detJ
 
     def spline_op(

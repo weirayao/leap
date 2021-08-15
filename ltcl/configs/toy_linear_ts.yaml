@@ -20,17 +20,19 @@ SPLINE:
     PATH: '/data/datasets/logs/spline_linear_nongaussian_ts.pth'
   
 VAE:
-    GPU: [1]
+    GPU: [3]
     CPU: 8
     TRAIN_BS: 64
     VAL_BS: 128
-    EPOCHS: 200
-    N_VAL_SAMPLES: 1000
+    EPOCHS: 300
+    N_VAL_SAMPLES: 1280
     LAG: 2
-    LENGTH: 12
+    LENGTH: 4
     TRANS_PRIOR: 'L'
     LR: 0.0005
-    BETA: 0.005
+    BETA: 0.003
+    GAMMA: 0.009
+    SIGMA: 0.000001
     INPUT_DIM: 8
     LATENT_DIM: 8
     BIAS: FALSE
@@ -45,4 +47,4 @@ MCC:
     FREQ: 0.1
     CORR: 'Pearson' # 'Spearman' # 
 
-SEED: 440
+SEED: 100

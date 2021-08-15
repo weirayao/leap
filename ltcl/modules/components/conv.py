@@ -3,35 +3,62 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 
+
+class View(nn.Module):
+    def __init__(self, size):
+        super(View, self).__init__()
+        self.size = size
+
+    def forward(self, tensor):
+        return tensor.view(self.size)
+
 class ConvDecoder(nn.Module):
     """Convolutional decoder for beta-VAE"""
-    def __init__(self, latent_dims=128):
-        super(ConvDecoder, self).__init__()
-        self.fc = nn.Linear(latent_dims, 2048)
+    def __init__(self, z_dim=10, nc=3, hidden_dim=256):
+        super().__init__()
         self.upsample = nn.Sequential(
-                        nn.ConvTranspose2d(512,256,4,2),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(),
-                        nn.ConvTranspose2d(256,128,4,2),
-                        nn.BatchNorm2d(128),
-                        nn.ReLU(),
-                        nn.ConvTranspose2d(128,64,4,2),
-                        nn.BatchNorm2d(64),
-                        nn.ReLU(),
-                        nn.ConvTranspose2d(64,32,4,2),
-                        nn.BatchNorm2d(32),
-                        nn.ReLU(),
-                        nn.ConvTranspose2d(32,16,4,2),
-                        nn.BatchNorm2d(16),
-                        nn.ReLU(),
-                        nn.ConvTranspose2d(16,3,4,2)
-                        )
-                        
-        self.resize = transforms.Resize((64,64))
-        
+                                        nn.Linear(z_dim, hidden_dim),               # B, hidden_dim
+                                        View((-1, hidden_dim, 1, 1)),               # B, hidden_dim,  1,  1
+                                        nn.ReLU(True),
+                                        nn.ConvTranspose2d(hidden_dim, 64, 4),      # B,  64,  4,  4
+                                        nn.BatchNorm2d(64),
+                                        nn.ReLU(True),
+                                        nn.ConvTranspose2d(64, 64, 4, 2, 1), # B,  64,  8,  8
+                                        nn.BatchNorm2d(64),
+                                        nn.ReLU(True),
+                                        nn.ConvTranspose2d(64, 32, 4, 2, 1), # B,  32, 16, 16
+                                        nn.BatchNorm2d(32),
+                                        nn.ReLU(True),
+                                        nn.ConvTranspose2d(32, 32, 4, 2, 1), # B,  32, 32, 32
+                                        nn.BatchNorm2d(32),
+                                        nn.ReLU(True),
+                                        nn.ConvTranspose2d(32, nc, 4, 2, 1)  # B, nc, 64, 64
+                                     ) 
     def forward(self, x):
-        x = F.relu(self.fc(x))
-        x = torch.reshape(x, (x.shape[0], 512, 2, 2))
-        x = self.upsample(x)
-        x = self.resize(x)
-        return x
+        return self.upsample(x)
+
+class ConvEncoder(nn.Module):
+
+    def __init__(self, z_dim=10, nc=3, hidden_dim=256):
+        super().__init__()
+        self.downsample = nn.Sequential(
+                                        nn.Conv2d(nc, 32, 4, 2, 1),          # B,  32, 32, 32
+                                        nn.BatchNorm2d(32),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(32, 32, 4, 2, 1),          # B,  32, 16, 16
+                                        nn.BatchNorm2d(32),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(32, 64, 4, 2, 1),          # B,  64,  8,  8
+                                        nn.BatchNorm2d(64),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(64, 64, 4, 2, 1),          # B,  64,  4,  4
+                                        nn.BatchNorm2d(64),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(64, hidden_dim, 4, 1),     # B, hidden_dim,  1,  1
+                                        nn.BatchNorm2d(hidden_dim),
+                                        nn.ReLU(True),
+                                        View((-1, hidden_dim*1*1)),       # B, hidden_dim
+                                        nn.Linear(hidden_dim, z_dim)             # B, z_dim
+                                        )
+    def forward(self, x):
+        return self.downsample(x)
