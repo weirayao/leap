@@ -84,7 +84,7 @@ class PNLTransitionPrior(nn.Module):
                                   input_size = latent_size, 
                                   hidden_size = hidden_dim, 
                                   n_hidden = 1, 
-                                  batch_norm = True)
+                                  batch_norm = False)
     
     def forward(self, x, mask=None):
         # x: [BS, T, D]

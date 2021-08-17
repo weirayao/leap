@@ -4,11 +4,11 @@
 
 ROOT: '/home/yuewen/data/datasets/logs/cmu_wyao/data'
 LOG: '/home/yuewen/data/datasets/logs'
-DATASET: 'nonlinear_ns'
+DATASET: 'nonlinear_gau_ns'
 
 SPLINE:
     USE_WARM_START: TRUE
-    TYPE: 'laplacian' # 'gaussian'
+    TYPE: 'gaussian'
     STEPS: 5000
     LR: 0.001
     CUDA: FALSE
@@ -17,7 +17,7 @@ SPLINE:
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_ns.pth'
+    PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_gau_ns.pth'
   
 VAE:
     GPU: [1]
@@ -48,4 +48,4 @@ MCC:
     FREQ: 0.1
     CORR: 'Pearson' # 'Spearman'
 
-SEED: 1440
+SEED: 770

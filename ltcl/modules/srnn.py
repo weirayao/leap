@@ -61,7 +61,7 @@ class SRNNSynthetic(pl.LightningModule):
         # Recurrent/Factorized inference
         if infer_mode == 'R':
             self.enc = MLPEncoder(latent_size=z_dim, 
-                                num_layers=3, 
+                                num_layers=4, 
                                 hidden_dim=hidden_dim)
 
             self.dec = MLPDecoder(latent_size=z_dim, 
