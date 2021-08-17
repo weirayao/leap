@@ -100,7 +100,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         elif trans_prior == 'PNL':
             self.transition_prior = PNLTransitionPrior(lags=lag, 
                                                        latent_size=z_dim, 
-                                                       num_layers=1, 
+                                                       num_layers=3, 
                                                        hidden_dim=hidden_dim)
         elif trans_prior == 'IN':
             self.transition_prior = INTransitionPrior()
@@ -426,6 +426,6 @@ class SRNNSyntheticNS(pl.LightningModule):
 
     def configure_optimizers(self):
         opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999))
-        opt_d = torch.optim.Adam(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
+        opt_d = torch.optim.SGD(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
         # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [opt_v, opt_d], []

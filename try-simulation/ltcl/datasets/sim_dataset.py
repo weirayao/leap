@@ -13,9 +13,11 @@ from sklearn import preprocessing
 from scipy.stats import ortho_group
 from sklearn.preprocessing import scale
 
+import ipdb as pdb
+
 noise_scale = 0.1
 VALIDATION_RATIO = 0.2
-root_dir = '/home/yuewen/projects/data/'
+root_dir = '/data/datasets/logs/cmu_wyao/data'
 standard_scaler = preprocessing.StandardScaler()
 
 def leaky_ReLU_1d(d, negSlope):
@@ -71,7 +73,6 @@ def linear_nonGaussian():
         condList.append(np.linalg.cond(A))
 
     condThresh = np.percentile(condList, 15)  # only accept those below 25% percentile
-
     for l in range(lags):
         B = generateUniformMat(latent_size, condThresh)
         transitions.append(B)
@@ -117,17 +118,16 @@ def linear_nonGaussian():
 def linear_nonGaussian_ts():
     lags = 2
     Nlayer = 3
-    length = 10
+    length = 4
     condList = []
     negSlope = 0.2
     latent_size = 8
     transitions = []
-    batch_size = 50000
+    batch_size = 100000
     Niter4condThresh = 1e4
 
     path = os.path.join(root_dir, "linear_nongaussian_ts")
     os.makedirs(path, exist_ok=True)
-
     for i in range(int(Niter4condThresh)):
         # A = np.random.uniform(0,1, (Ncomp, Ncomp))
         A = np.random.uniform(1, 2, (latent_size, latent_size))  # - 1
@@ -164,7 +164,10 @@ def linear_nonGaussian_ts():
     # Mixing function
     for i in range(length):
         # Transition function
-        y_t = torch.distributions.laplace.Laplace(0,noise_scale).rsample((batch_size, latent_size)).numpy()
+        y_1 = torch.distributions.laplace.Laplace(0,noise_scale).rsample((batch_size, latent_size//2))
+        # y_1 = torch.exp(torch.normal(0, 1, size=(batch_size, latent_size//2)))*0.01
+        y_2 = torch.distributions.laplace.Laplace(0,noise_scale).rsample((batch_size, latent_size//2))
+        y_t = torch.cat((y_1, y_2), dim=1).numpy()
         # y_t = (y_t - np.mean(y_t, axis=0 ,keepdims=True)) / np.std(y_t, axis=0 ,keepdims=True)
         for l in range(lags):
             y_t += np.dot(y_l[:,l,:], transitions[l])
@@ -183,7 +186,6 @@ def linear_nonGaussian_ts():
     np.savez(os.path.join(path, "data"), 
             yt = yt, 
             xt = xt)
-
     for l in range(lags):
         B = transitions[l]
         np.save(os.path.join(path, "W%d"%(lags-l)), B)
