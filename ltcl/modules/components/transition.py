@@ -1,6 +1,7 @@
 """Prior Network"""
 import torch
 import torch.nn as nn
+from torch.autograd.functional import jacobian
 from ltcl.modules.components.mlp import NLayerLeakyMLP
 from ltcl.modules.components.graph import PropNet
 from ltcl.modules.components.transforms import AfflineCoupling
@@ -137,12 +138,17 @@ class NPTransitionPrior(nn.Module):
         x = torch.swapaxes(x, 2, 3)
         shape = x.shape
         x = x.reshape(-1, self.L+1, input_dim)
+        xx, yy = x[:,-1:], x[:,:-1]
+        yy = yy.reshape(-1, self.L*input_dim)
         residuals = [ ]
-        log_abs_det_jacobian = 0
+        sum_log_abs_det_jacobian = 0
         for i in range(input_dim):
-            residual = self.gs[i](x[:,:,i])
-            J = torch.log(torch.autograd.grad(residual, x[:,:,i]))
-            log_abs_det_jacobian += J
+            inputs = torch.cat((yy, xx[:,:,i]),dim=-1)
+            residual = self.gs[i](inputs)
+            pdd = jacobian(self.gs[i], inputs, create_graph=True)
+            # Determinant of low-triangular mat is product of diagonal entries
+            logabsdet = torch.log(torch.abs(torch.diag(pdd[:,0,:,-1])))
+            sum_log_abs_det_jacobian += logabsdet
             residuals.append(residual)
         residuals = torch.cat(residuals, dim=-1)
-        return residuals, log_abs_det_jacobian
+        return residuals, sum_log_abs_det_jacobian
