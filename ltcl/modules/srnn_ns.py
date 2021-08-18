@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import ipdb as pdb
 import torch.nn as nn
-import torch.optim as optim
+import torch_optimizer as optim
 import torch.nn.init as init
 import pytorch_lightning as pl
 import torch.distributions as D
@@ -67,25 +67,25 @@ class SRNNSyntheticNS(pl.LightningModule):
         # Recurrent/Factorized inference
         if infer_mode == 'R':
             self.enc = MLPEncoder(latent_size=z_dim, 
-                                num_layers=4, 
-                                hidden_dim=hidden_dim)
+                                  num_layers=3, 
+                                  hidden_dim=hidden_dim)
 
             self.dec = MLPDecoder(latent_size=z_dim, 
-                                num_layers=2,
-                                hidden_dim=hidden_dim)
+                                  num_layers=2,
+                                  hidden_dim=hidden_dim)
 
             # Bi-directional hidden state rnn
             self.rnn = nn.GRU(input_size=z_dim, 
-                            hidden_size=hidden_dim, 
-                            num_layers=1, 
-                            batch_first=True, 
-                            bidirectional=True)
+                              hidden_size=hidden_dim, 
+                              num_layers=1, 
+                              batch_first=True, 
+                              bidirectional=True)
             
             # Inference net
             self.net = Inference(lag=lag,
                                  z_dim=z_dim, 
                                  hidden_dim=hidden_dim, 
-                                 num_layers=1)
+                                 num_layers=2)
 
         elif infer_mode == 'F':
             self.net = BetaVAE_MLP(input_dim=input_dim, 
@@ -108,18 +108,19 @@ class SRNNSyntheticNS(pl.LightningModule):
         # Spline flow model to learn the noise distribution
         self.spline_list = []
         for i in range(self.nclass):
-            self.spline = ComponentWiseSpline(input_dim=z_dim,
-                                            bound=bound,
-                                            count_bins=count_bins,
-                                            order=order)
+            spline = ComponentWiseSpline(input_dim=z_dim,
+                                         bound=bound,
+                                         count_bins=count_bins,
+                                         order=order)
 
             if use_warm_start:
-                self.spline.load_state_dict(torch.load(spline_pth, 
-                                            map_location=torch.device('cpu')))
+                spline.load_state_dict(torch.load(spline_pth, 
+                                                  map_location=torch.device('cpu')))
 
                 print("Load pretrained spline flow", flush=True)
-            self.spline_list.append(self.spline)
-        self.dictionary = {0:self.spline_list[0], 1:self.spline_list[1], 2:self.spline_list[2]}
+            self.spline_list.append(spline)
+        self.spline_list = nn.ModuleList(self.spline_list)
+        # self.dictionary = {0:self.spline_list[0], 1:self.spline_list[1], 2:self.spline_list[2]}
 
         # FactorVAE
         self.discriminator = Discriminator(z_dim = z_dim*self.length)
@@ -238,44 +239,21 @@ class SRNNSyntheticNS(pl.LightningModule):
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-        '''        
-        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
-        out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
-        es = torch.cat([item[0] for item in out])
-        logabsdet = torch.cat([item[1] for item in out])
-        '''
-        '''
-        es1, logabsdet1 = self.dictionary[0].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        es2, logabsdet2 = self.dictionary[1].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        es3, logabsdet3 = self.dictionary[2].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        one_hot_out1 = one_hot.unsqueeze(2).repeat(length-self.lag,1,1,self.z_dim)
-        out1 = torch.stack([es1, es2, es3], axis=1).view(one_hot_out1.shape)
-        es = torch.sum(out1*one_hot_out1, 2)
-        one_hot_out2 = one_hot.repeat(length-self.lag,1,1)
-        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1).view(one_hot_out2.shape)
-        logabsdet = torch.sum(out2*one_hot_out2, 2)
-        '''
-        indices = torch.argmax(one_hot, axis=1)
-        f1_indices = (indices==0).nonzero(as_tuple=False).squeeze()
-        f1_input = residuals[f1_indices]
-        f2_indices = (indices==1).nonzero(as_tuple=False).squeeze()
-        f2_input = residuals[f2_indices]
-        f3_indices = (indices==2).nonzero(as_tuple=False).squeeze()
-        f3_input = residuals[f3_indices]
-        f1_out1, f1_out2 = self.dictionary[0].to(x.device)(f1_input.contiguous().view(-1, self.z_dim))
-        f2_out1, f2_out2 = self.dictionary[1].to(x.device)(f2_input.contiguous().view(-1, self.z_dim))
-        f3_out1, f3_out2 = self.dictionary[2].to(x.device)(f3_input.contiguous().view(-1, self.z_dim))
-        es = torch.empty(residuals.shape).to(x.device)
-        es[f1_indices] = f1_out1.reshape(-1, length-self.lag, self.z_dim)
-        es[f2_indices] = f2_out1.reshape(-1, length-self.lag, self.z_dim)
-        es[f3_indices] = f3_out1.reshape(-1, length-self.lag, self.z_dim)
-        logabsdet = torch.empty(batch_size, length-self.lag).to(x.device)
-        logabsdet[f1_indices] = f1_out2.reshape(-1, length-self.lag)
-        logabsdet[f2_indices] = f2_out2.reshape(-1, length-self.lag)
-        logabsdet[f3_indices] = f3_out2.reshape(-1, length-self.lag)
-        
+        # Nonstationary branch
+        es = [ ]
+        logabsdet = [ ]
+        for c in range(self.nclass):
+            es_c, logabsdet_c = self.spline_list[c](residuals.contiguous().view(-1, self.z_dim))
+            es.append(es_c)
+            logabsdet.append(logabsdet_c)
+        es = torch.stack(es, axis=1)
+        logabsdet = torch.stack(logabsdet, axis=1)
+        mask = one_hot.unsqueeze(1).repeat(1,4,1).reshape(-1, 3)
+        es = (es * mask.unsqueeze(-1)).sum(1)
+        logabsdet = (logabsdet * mask).sum(1)
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
         logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
+
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
         log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
         kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
@@ -350,47 +328,21 @@ class SRNNSyntheticNS(pl.LightningModule):
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
-        '''
-        indices = np.argmax(one_hot.cpu().numpy(), axis=1)
-        out = [self.dictionary[idx].to(x.device)(residuals[i].contiguous()) for i, idx in enumerate(indices)]
-        es = torch.cat([item[0] for item in out])
-        logabsdet = torch.cat([item[1] for item in out])
-        # pdb.set_trace()
-        '''
-        '''
-        es1, logabsdet1 = self.dictionary[0].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        es2, logabsdet2 = self.dictionary[1].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        es3, logabsdet3 = self.dictionary[2].to(x.device)(residuals.contiguous().view(-1, self.z_dim))
-        one_hot_out1 = one_hot.unsqueeze(2).repeat(length-self.lag,1,1,self.z_dim)
-        out1 = torch.stack([es1, es2, es3], axis=1).view(one_hot_out1.shape)
-        es = torch.sum(out1*one_hot_out1, 2)
-        one_hot_out2 = one_hot.repeat(length-self.lag,1,1)
-        out2 = torch.stack([logabsdet1, logabsdet2, logabsdet3], axis=1).view(one_hot_out2.shape)
-        logabsdet = torch.sum(out2*one_hot_out2, 2)
-        # pdb.set_trace()
-        '''
-        indices = torch.argmax(one_hot, axis=1)
-        f1_indices = (indices==0).nonzero(as_tuple=False).squeeze()
-        f1_input = residuals[f1_indices]
-        f2_indices = (indices==1).nonzero(as_tuple=False).squeeze()
-        f2_input = residuals[f2_indices]
-        f3_indices = (indices==2).nonzero(as_tuple=False).squeeze()
-        f3_input = residuals[f3_indices]
-        f1_out1, f1_out2 = self.dictionary[0].to(x.device)(f1_input.contiguous().view(-1, self.z_dim))
-        f2_out1, f2_out2 = self.dictionary[1].to(x.device)(f2_input.contiguous().view(-1, self.z_dim))
-        f3_out1, f3_out2 = self.dictionary[2].to(x.device)(f3_input.contiguous().view(-1, self.z_dim))
-        es = torch.empty(residuals.shape).to(x.device)
-        es[f1_indices] = f1_out1.reshape(-1, length-self.lag, self.z_dim)
-        es[f2_indices] = f2_out1.reshape(-1, length-self.lag, self.z_dim)
-        es[f3_indices] = f3_out1.reshape(-1, length-self.lag, self.z_dim)
-        logabsdet = torch.empty(batch_size, length-self.lag).to(x.device)
-        logabsdet[f1_indices] = f1_out2.reshape(-1, length-self.lag)
-        logabsdet[f2_indices] = f2_out2.reshape(-1, length-self.lag)
-        logabsdet[f3_indices] = f3_out2.reshape(-1, length-self.lag)
-        # pdb.set_trace()
-        
+        # Nonstationary branch
+        es = [ ]
+        logabsdet = [ ]
+        for c in range(self.nclass):
+            es_c, logabsdet_c = self.spline_list[c](residuals.contiguous().view(-1, self.z_dim))
+            es.append(es_c)
+            logabsdet.append(logabsdet_c)
+        es = torch.stack(es, axis=1)
+        logabsdet = torch.stack(logabsdet, axis=1)
+        mask = one_hot.unsqueeze(1).repeat(1,4,1).reshape(-1, 3)
+        es = (es * mask.unsqueeze(-1)).sum(1)
+        logabsdet = (logabsdet * mask).sum(1)
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
-        logabsdet = torch.sum(logabsdet.reshape(batch_size, length-self.lag), dim=1)
+        logabsdet = torch.sum(logabsdet.reshape(batch_size,length-self.lag), dim=1)
+        
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
         log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
         kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
@@ -425,7 +377,20 @@ class SRNNSyntheticNS(pl.LightningModule):
         return x_recon
 
     def configure_optimizers(self):
-        opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999))
+        opt_v = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999), weight_decay=0.0001)
         opt_d = torch.optim.SGD(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
         # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [opt_v, opt_d], []
+
+    # def on_after_backward(self):
+    #     # Hack trick to skip nan/inf gradient
+    #     valid_gradients = True
+    #     for name, param in self.named_parameters():
+    #         if param.grad is not None:
+    #             valid_gradients = not (torch.isnan(param.grad).any() or torch.isinf(param.grad).any())
+    #             if not valid_gradients:
+    #                 break
+
+    #     if not valid_gradients:
+    #         print('detected inf or nan values in gradients. not updating model parameters')
+    #         self.zero_grad()

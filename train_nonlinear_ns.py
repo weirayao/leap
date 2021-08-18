@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 from train_spline import pretrain_spline
 from ltcl.modules.srnn_ns import SRNNSyntheticNS
-from ltcl.tools.utils import load_yaml, setup_seed
+from ltcl.tools.utils import load_yaml
 from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSampleNS
 
 
@@ -29,7 +29,7 @@ def main(args):
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
 
-    setup_seed(cfg['SEED'])
+    pl.seed_everything(cfg['SEED'])
 
     # Warm-start spline
     if cfg['SPLINE']['USE_WARM_START']:
@@ -82,7 +82,8 @@ def main(args):
     trainer = pl.Trainer(default_root_dir=log_dir,
                          gpus=cfg['VAE']['GPU'], 
                          val_check_interval = cfg['MCC']['FREQ'],
-                         max_epochs=cfg['VAE']['EPOCHS'])
+                         max_epochs=cfg['VAE']['EPOCHS'],
+                         deterministic=True)
 
     # Train the model
     trainer.fit(model, train_loader, val_loader)

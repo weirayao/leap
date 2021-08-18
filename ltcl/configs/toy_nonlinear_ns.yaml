@@ -13,7 +13,7 @@ SPLINE:
     LR: 0.001
     CUDA: FALSE
     BS: 64
-    LATENT_DIM: 4
+    LATENT_DIM: 8
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
@@ -23,14 +23,14 @@ VAE:
     GPU: [0]
     CPU: 8
     TRAIN_BS: 32
-    VAL_BS: 64
+    VAL_BS: 1024
     EPOCHS: 300
     N_VAL_SAMPLES: 1024
     LAG: 2
     LENGTH: 4
     NCLASS: 3
     TRANS_PRIOR: 'PNL'
-    LR: 4.0e-4
+    LR: 2.0e-3
     BETA: 2.0e-3
     GAMMA: 2.0e-2
     SIGMA: 1.0e-6
@@ -48,4 +48,4 @@ MCC:
     FREQ: 0.1
     CORR: 'Pearson' # 'Spearman'
 
-SEED: 770
+SEED: 123
