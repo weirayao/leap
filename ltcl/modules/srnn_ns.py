@@ -13,10 +13,14 @@ from .components.beta import BetaVAE_MLP
 from .metrics.correlation import compute_mcc
 from .components.tc import Discriminator, permute_dims
 from .components.transforms import ComponentWiseSpline
-from .components.mlp import MLPEncoder, MLPDecoder, Inference
-from .components.transition import PNLTransitionPrior, MBDTransitionPrior
-from .components.mlp import MLPEncoder, MLPDecoder, NLayerLeakyMLP, NLayerLeakyMLP
-from .components.transition import LinearTransitionPrior, PNLTransitionPrior, INTransitionPrior
+from .components.mlp import (MLPEncoder, 
+                             MLPDecoder, 
+                             Inference, 
+                             NLayerLeakyMLP)
+from .components.transition import (MBDTransitionPrior, 
+                                    PNLTransitionPrior, 
+                                    INTransitionPrior, 
+                                    NPTransitionPrior)
 
 
 class SRNNSyntheticNS(pl.LightningModule):
@@ -46,7 +50,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         '''Bi-directional inference network'''
         super().__init__()
         # Transition prior must be L (Linear), PNL (Post-nonlinear) or IN (Interaction)
-        assert trans_prior in ('L', 'PNL','IN')
+        assert trans_prior in ('L', 'PNL','IN', 'NP')
         # Inference mode must be R (Recurrent) or F (Factorized)
         assert infer_mode in ('R', 'F')
 
@@ -104,6 +108,12 @@ class SRNNSyntheticNS(pl.LightningModule):
                                                        hidden_dim=hidden_dim)
         elif trans_prior == 'IN':
             self.transition_prior = INTransitionPrior()
+        
+        elif trans_prior == 'NP':
+            self.transition_prior = NPTransitionPrior(lags=lag, 
+                                                      latent_size=z_dim, 
+                                                      num_layers=3, 
+                                                      hidden_dim=hidden_dim)
         
         # Spline flow model to learn the noise distribution
         self.spline_list = []

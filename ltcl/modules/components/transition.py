@@ -145,11 +145,12 @@ class NPTransitionPrior(nn.Module):
         for i in range(input_dim):
             inputs = torch.cat((yy, xx[:,:,i]),dim=-1)
             residual = self.gs[i](inputs)
-            pdd = jacobian(self.gs[i], inputs, create_graph=True)
+            pdd = jacobian(self.gs[i], inputs, create_graph=True, vectorize=True)
             # Determinant of low-triangular mat is product of diagonal entries
             logabsdet = torch.log(torch.abs(torch.diag(pdd[:,0,:,-1])))
             sum_log_abs_det_jacobian += logabsdet
             residuals.append(residual)
         residuals = torch.cat(residuals, dim=-1)
         residuals = residuals.reshape(batch_size, -1, input_dim)
+        sum_log_abs_det_jacobian = torch.sum(sum_log_abs_det_jacobian.reshape(batch_size, length-self.L), dim=1)
         return residuals, sum_log_abs_det_jacobian
