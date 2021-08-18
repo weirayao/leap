@@ -151,4 +151,5 @@ class NPTransitionPrior(nn.Module):
             sum_log_abs_det_jacobian += logabsdet
             residuals.append(residual)
         residuals = torch.cat(residuals, dim=-1)
+        residuals = residuals.reshape(batch_size, -1, input_dim)
         return residuals, sum_log_abs_det_jacobian
