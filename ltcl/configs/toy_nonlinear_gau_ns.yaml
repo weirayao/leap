@@ -4,7 +4,8 @@
 
 ROOT: '/home/yuewen/data/datasets/logs/cmu_wyao/data'
 LOG: '/home/yuewen/data/datasets/logs'
-DATASET: 'nonlinear_gau_ns'
+DATASET: 'nonlinear_gau_cins'
+# DATASET: 'nonlinear_gau_ns'
 
 SPLINE:
     USE_WARM_START: TRUE
@@ -17,7 +18,7 @@ SPLINE:
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_gau_ns.pth'
+    PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_gau_cins.pth'
   
 VAE:
     GPU: [1]
@@ -29,8 +30,8 @@ VAE:
     LAG: 2
     LENGTH: 4
     NCLASS: 3
-    TRANS_PRIOR: 'PNL'
-    LR: 4.0e-4
+    TRANS_PRIOR: 'NP'
+    LR: 1.0e-3
     BETA: 2.0e-3
     GAMMA: 2.0e-2
     SIGMA: 1.0e-6
