@@ -128,11 +128,12 @@ def linear_nonGaussian():
 def linear_nonGaussian_ts():
     lags = 2
     Nlayer = 3
-    length = 10
+    length = 4
     condList = []
     negSlope = 0.2
     latent_size = 8
     transitions = []
+    noise_scale = 0.1
     batch_size = 50000
     Niter4condThresh = 1e4
 

@@ -86,6 +86,9 @@ def main(args):
     # Train the model
     trainer.fit(model, train_loader, val_loader)
 
+    result_path = "./checkpoints/pnl.ckpt"
+    trainer.save_checkpoint(result_path)
+
 if __name__ == "__main__":
 
     argparser = argparse.ArgumentParser(description=__doc__)

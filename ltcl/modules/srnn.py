@@ -340,7 +340,7 @@ class SRNNSynthetic(pl.LightningModule):
         return x_recon
 
     def configure_optimizers(self):
-        opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999))
+        opt_v = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr, betas=(0.9, 0.999), weight_decay=0.0001)
         opt_d = torch.optim.SGD(filter(lambda p: p.requires_grad, self.discriminator.parameters()), lr=self.lr/2)
         # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.99)
         return [opt_v, opt_d], []
