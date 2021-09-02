@@ -4,7 +4,6 @@ import torch
 import numpy as np
 import ipdb as pdb
 import torch.nn as nn
-import torch_optimizer as optim
 import torch.nn.init as init
 import pytorch_lightning as pl
 import torch.distributions as D
@@ -258,7 +257,7 @@ class SRNNSyntheticNS(pl.LightningModule):
             logabsdet.append(logabsdet_c)
         es = torch.stack(es, axis=1)
         logabsdet = torch.stack(logabsdet, axis=1)
-        mask = one_hot.unsqueeze(1).repeat(1,4,1).reshape(-1, 3)
+        mask = one_hot.unsqueeze(1).repeat(1,self.length,1).reshape(-1, self.nclass)
         es = (es * mask.unsqueeze(-1)).sum(1)
         logabsdet = (logabsdet * mask).sum(1)
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
@@ -347,7 +346,7 @@ class SRNNSyntheticNS(pl.LightningModule):
             logabsdet.append(logabsdet_c)
         es = torch.stack(es, axis=1)
         logabsdet = torch.stack(logabsdet, axis=1)
-        mask = one_hot.unsqueeze(1).repeat(1,4,1).reshape(-1, 3)
+        mask = one_hot.unsqueeze(1).repeat(1,self.length,1).reshape(-1, self.nclass)
         es = (es * mask.unsqueeze(-1)).sum(1)
         logabsdet = (logabsdet * mask).sum(1)
         es = es.reshape(batch_size, length-self.lag, self.z_dim)
