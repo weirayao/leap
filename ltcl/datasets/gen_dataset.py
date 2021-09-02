@@ -855,7 +855,7 @@ def nonlinear_gau_cins_sparse():
     batch_size = 7500
     Niter4condThresh = 1e4
 
-    path = os.path.join(root_dir, "nonlinear_gau_cins")
+    path = os.path.join(root_dir, "nonlinear_gau_cins_sparse")
     os.makedirs(path, exist_ok=True)
 
     for i in range(int(Niter4condThresh)):
