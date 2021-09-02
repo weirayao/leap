@@ -1,6 +1,5 @@
 import os
 import random
-import cv2
 import sys
 import numpy as np
 import h5py
@@ -13,6 +12,16 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 import yaml
+
+def create_sparse_transitions(n_nodes, lags):
+    masks = [ ]
+    for i in range(lags):
+        mask = np.random.randint(0, 2, (n_nodes, n_nodes))
+        for i in range(n_nodes):
+            mask[i,i] = 1  
+        masks.append(mask)
+    masks.reverse()
+    return masks      
 
 def setup_seed(seed):
     torch.manual_seed(seed)
