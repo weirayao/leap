@@ -30,9 +30,12 @@ setup(
     install_requires = [
         "pytorch-lightning==1.2.7",
         "torch==1.8.1",
+        "disentanglement-lib==1.4",
         "torchvision",
         "torchaudio",
-        "disentanglement-lib==1.4"
+        "h5py",
+        "ipdb",
+        "opencv-python"
     ],
     tests_require=[
         "pytest"
