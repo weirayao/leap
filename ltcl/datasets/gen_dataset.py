@@ -16,7 +16,7 @@ from sklearn.preprocessing import scale
 from ltcl.tools.utils import create_sparse_transitions
 
 VALIDATION_RATIO = 0.2
-root_dir = '/srv/data/ltcl'
+root_dir = '/srv/data/ltcl/data'
 standard_scaler = preprocessing.StandardScaler()
 
 def leaky_ReLU_1d(d, negSlope):
