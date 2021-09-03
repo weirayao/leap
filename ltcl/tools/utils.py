@@ -13,6 +13,7 @@ from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 import yaml
 
+
 def create_sparse_transitions(n_nodes, lags):
     masks = [ ]
     for i in range(lags):
@@ -22,6 +23,15 @@ def create_sparse_transitions(n_nodes, lags):
         masks.append(mask)
     masks.reverse()
     return masks      
+
+def controlable_sparse_transitions(n_nodes, lags, sparsity=0.3):
+    mask = np.eye(n_nodes, dtype=int)
+    num_nonzero = int(n_nodes * sparsity) - 1
+    for i in range(n_nodes):
+        choice = np.random.choice(n_nodes-1, size=num_nonzero, replace=False)
+        choice[choice >= i] += 1
+        mask[i, choice] = 1
+    return mask
 
 def setup_seed(seed):
     torch.manual_seed(seed)
