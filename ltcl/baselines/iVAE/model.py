@@ -1,8 +1,8 @@
 """
 iVAE.py
 - https://github.com/ilkhem/icebeem
-- ConditionalDataset --> Use Contrastive Dataset
-- No contrastive learning & beta_VAE
+- Conditional --> Use CINS Dataset
+- No Beta-VAE & Contrastive Learning
 """
 import torch
 import pytorch_lightning as pl

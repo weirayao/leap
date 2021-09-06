@@ -7,7 +7,7 @@ LOG: '/home/yuewen/data/datasets/logs'
 DATASET: 'nonlinear_gau_cins'
 
 NS: True
-# MODEL: 'TCL' (waiting)
+MODEL: 'TCL'
 # MODEL: 'PCL'
 # MODEL: 'iVAE' 
 # MODEL: 'BetaVAE' 

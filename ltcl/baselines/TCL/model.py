@@ -5,21 +5,29 @@ TCL.py
 - No Beta-VAE & Contrastive Learning
 """
 import torch
-import tensorflow as tf
 import pytorch_lightning as pl
+import torch.nn.functional as F
 
 "utils file (SAME)"
 from ..metrics.correlation import compute_mcc
 "TCL list"
 from .net import TCLMLP
 
-def tcl_loss(logits, labels):
-    # Calculate the average cross entropy loss across the batch.
-    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits, name='cross_entropy_per_example')
-    cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
-    return cross_entropy_mean
+# import tensorflow as tf
+# def tcl_loss(logits, labels):
+#     # Calculate the average cross entropy loss across the batch.
+#     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+#         labels=labels, logits=logits, name='cross_entropy_per_example')
+#     cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
+#     return cross_entropy_mean
 
+def tcl_loss(logits, labels):
+    batch_size = labels.size(0)
+    assert batch_size != 0
+    recon_loss = F.binary_cross_entropy_with_logits(
+        logits, labels, size_average=False).div(batch_size)
+
+    return recon_loss
 
 class TCL(pl.LightningModule):
     def __init__(self, 
@@ -39,18 +47,24 @@ class TCL(pl.LightningModule):
         self.correlation = correlation
         self.model = TCLMLP(self.input_dim, self.z_dim, self.hidden_dim, self.nclass)
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        x = batch['s1']['xt']; u = batch['s1']['ct']
+    def training_step(self, batch, batch_idx):
+        x = batch['s1']['xt']
+        length = x.shape[1]
+        x = x.reshape(-1, self.input_dim)
+        index = batch['s1']['ct'].repeat(length, 1)
         logits, feats = self.model(x)
-        vae_loss = tcl_loss(logits, u)
+        vae_loss = tcl_loss(logits, index)
 
         self.log("train_vae_loss", vae_loss)
         return vae_loss
 
     def validation_step(self, batch, batch_idx):
-        x = batch['s1']['xt']; u = batch['s1']['ct']
+        x = batch['s1']['xt']
+        length = x.shape[1]
+        x = x.reshape(-1, self.input_dim)
+        index = batch['s1']['ct'].repeat(length, 1)
         logits, feats = self.model(x)
-        vae_loss = tcl_loss(logits.cpu(), u.cpu())
+        vae_loss = tcl_loss(logits, index)
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = feats.view(-1, self.z_dim).T.detach().cpu().numpy()
         zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()

@@ -11,8 +11,7 @@ from torch import distributions as dist
 class TCLMLP(nn.Module):
     def __init__(self, 
                  input_dim=8, z_dim=8, 
-                 hidden_dim=128, nclass=20,
-                 device = 'cuda' if torch.cuda.is_available() else 'cpu'):
+                 hidden_dim=128, nclass=20):
         super(TCLMLP, self).__init__()
         self.z_dim = z_dim
         self.nclass = nclass
@@ -29,7 +28,7 @@ class TCLMLP(nn.Module):
         )
 
         self.net_logits = nn.Sequential(
-            nn.Linear(input_dim, nclass),
+            nn.Linear(input_dim, 1),
             nn.LeakyReLU(0.2, True)
         )
         self.weight_init()
