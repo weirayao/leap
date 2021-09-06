@@ -20,25 +20,32 @@ class iVAE(pl.LightningModule):
                  lr, 
                  correlation):
         # Networks & Optimizers
+        super(iVAE, self).__init__()
+        self.lr = lr
         self.z_dim = z_dim
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.correlation = correlation
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        self.lr = lr
         self.model = iVAEMLP(self.input_dim, self.z_dim, self.hidden_dim)
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        x = batch['s1']['xt']; u = batch['s1']['ct']
-        elbo, z_est = self.model(x, u)
+    def training_step(self, batch, batch_idx):
+        x = batch['s1']['xt']
+        length = x.shape[1]
+        x = x.reshape(-1, self.input_dim)
+        index = batch['s1']['ct'].repeat(length, 1)
+
+        elbo, _ = self.model.elbo(x, index)
         vae_loss = elbo.mul(-1)
         self.log("train_vae_loss", vae_loss)
         return vae_loss
 
-    def validation_step(self, batch, batch_idx, optimizer_idx):
-        x = batch['s1']['xt']; u = batch['s1']['ct']
-        elbo, zt_recon = self.model.elbo(x, u)
+    def validation_step(self, batch, batch_idx):
+        x = batch['s1']['xt']
+        length = x.shape[1]
+        x = x.reshape(-1, self.input_dim)
+        index = batch['s1']['ct'].repeat(length, 1)
+
+        elbo, zt_recon = self.model.elbo(x, index)
         vae_loss = elbo.mul(-1)
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = zt_recon.view(-1, self.z_dim).T.detach().cpu().numpy()

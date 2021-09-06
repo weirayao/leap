@@ -58,35 +58,35 @@ class BetaVAE(pl.LightningModule):
                  rate_prior,
                  correlation):
         # Networks & Optimizers
+        super(BetaVAE, self).__init__()
         self.beta = beta
         self.z_dim = z_dim
         self.gamma = gamma
-        self.rate_prior = rate_prior
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.correlation = correlation
         self.decoder_dist = 'bernoulli'
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.rate_prior = rate_prior * torch.ones(1, requires_grad=False, 
-                                                  device=self.device)
+        self.rate_prior = rate_prior * torch.ones(1, requires_grad=False)
 
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
-
-        self.normal_dist = torch.distributions.normal.Normal(
-            torch.zeros(self.z_dim, device=self.device),
-            torch.ones(self.z_dim, device=self.device))
-
         self.net = BetaVAEMLP(self.input_dim, self.z_dim, self.hidden_dim)
 
     def compute_cross_ent_laplace(self, mean, logvar, rate_prior):
         var = torch.exp(logvar)
         sigma = torch.sqrt(var)
+        # import ipdb
+        # ipdb.set_trace()
+        device = sigma.device
+        rate_prior = rate_prior.to(device)
+        normal_dist = torch.distributions.normal.Normal(
+            torch.zeros(self.z_dim).to(device),
+            torch.ones(self.z_dim).to(device))
+
         ce = - torch.log(rate_prior / 2) + rate_prior * sigma *\
              np.sqrt(2 / np.pi) * torch.exp(- mean**2 / (2 * var)) -\
-             rate_prior * mean * (
-                     1 - 2 * self.normal_dist.cdf(mean / sigma))
+             rate_prior * mean * (1 - 2 * normal_dist.cdf(mean / sigma))
         return ce
 
     def compute_cross_ent_combined(self, mu, logvar):
@@ -106,8 +106,8 @@ class BetaVAE(pl.LightningModule):
                                                  cross_ent_normal,
                                                  cross_ent_laplace]]
     
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        x = batch['s1']['xt']
+    def training_step(self, batch, batch_idx):
+        x = batch['s1']['xt'].reshape(-1, self.input_dim)
         x_recon, mu, logvar = self.net(x)
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
 
@@ -123,8 +123,8 @@ class BetaVAE(pl.LightningModule):
         return vae_loss
 
 
-    def validation_step(self, batch, batch_idx, optimizer_idx):
-        x = batch['s1']['xt']
+    def validation_step(self, batch, batch_idx):
+        x = batch['s1']['xt'].reshape(-1, self.input_dim)
         x_recon, mu, logvar = self.net(x)
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
 

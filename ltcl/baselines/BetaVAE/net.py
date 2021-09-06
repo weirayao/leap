@@ -30,7 +30,7 @@ class BetaVAEMLP(nn.Module):
         self.z_dim = z_dim
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
-        self.encode = nn.Sequential(
+        self.encoder = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.LeakyReLU(0.2, True),
             nn.Linear(hidden_dim, hidden_dim),
@@ -42,7 +42,7 @@ class BetaVAEMLP(nn.Module):
             nn.Linear(hidden_dim, 2*z_dim),
             nn.LeakyReLU(0.2, True)
         )
-        self.decode = nn.Sequential(
+        self.decoder = nn.Sequential(
             nn.LeakyReLU(0.2, True),
             nn.Linear(z_dim, hidden_dim),
             nn.LeakyReLU(0.2, True),

@@ -1,8 +1,8 @@
 """
 TCL.py
 - pytorch-lightning version based on: https://github.com/ilkhem/icebeem
-- Contrastive Learning --> Use Contrastive Dataset
-- No Beta-VAE & Conditional
+- Conditional --> Use CINS Dataset
+- No Beta-VAE & Contrastive Learning
 """
 import torch
 import tensorflow as tf
@@ -30,14 +30,13 @@ class TCL(pl.LightningModule):
                  lr, 
                  correlation):
         # Networks & Optimizers
+        super(TCL, self).__init__()
+        self.lr = lr
         self.z_dim = z_dim
         self.nclass = nclass
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.correlation = correlation
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        self.lr = lr
         self.model = TCLMLP(self.input_dim, self.z_dim, self.hidden_dim, self.nclass)
 
     def training_step(self, batch, batch_idx, optimizer_idx):
@@ -48,10 +47,10 @@ class TCL(pl.LightningModule):
         self.log("train_vae_loss", vae_loss)
         return vae_loss
 
-    def validation_step(self, batch, batch_idx, optimizer_idx):
+    def validation_step(self, batch, batch_idx):
         x = batch['s1']['xt']; u = batch['s1']['ct']
         logits, feats = self.model(x)
-        vae_loss = tcl_loss(logits, u)
+        vae_loss = tcl_loss(logits.cpu(), u.cpu())
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = feats.view(-1, self.z_dim).T.detach().cpu().numpy()
         zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()

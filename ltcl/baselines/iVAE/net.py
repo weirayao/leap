@@ -7,6 +7,7 @@ from numbers import Number
 from torch.nn import functional as F
 from torch import distributions as dist
 
+device='cuda:0'
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
@@ -14,7 +15,7 @@ def weights_init(m):
 
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim, n_layers, activation='none', slope=.1, device='cpu'):
+    def __init__(self, input_dim, output_dim, hidden_dim, n_layers, activation='none', slope=.1):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -84,7 +85,7 @@ class Dist:
 
 
 class Normal(Dist):
-    def __init__(self, device='cpu'):
+    def __init__(self):
         super().__init__()
         self.device = device
         self.c = 2 * np.pi * torch.ones(1).to(self.device)
@@ -137,7 +138,7 @@ class Normal(Dist):
 
 
 class Laplace(Dist):
-    def __init__(self, device='cpu'):
+    def __init__(self):
         super().__init__()
         self.device = device
         self._dist = dist.laplace.Laplace(torch.zeros(1).to(self.device), torch.ones(1).to(self.device) / np.sqrt(2))
@@ -160,7 +161,7 @@ class Laplace(Dist):
 
 
 class Bernoulli(Dist):
-    def __init__(self, device='cpu'):
+    def __init__(self):
         super().__init__()
         self.device = device
         self._dist = dist.bernoulli.Bernoulli(0.5 * torch.ones(1).to(self.device))
@@ -186,11 +187,10 @@ class iVAEMLP(nn.Module):
     def __init__(self, 
                  input_dim=8, z_dim=8, hidden_dim=128, 
                  decoder=None, encoder=None, prior=None, 
-                 slope=.1, n_layers=3, activation='lrelu', anneal=False,
-                 device = 'cuda' if torch.cuda.is_available() else 'cpu'):
+                 slope=.1, n_layers=3, activation='lrelu', anneal=False):
         super(iVAEMLP, self).__init__()
         self.latent_dim = z_dim
-        self.aux_dim = input_dim
+        self.aux_dim = 1
         self.data_dim = input_dim
         self.hidden_dim = hidden_dim
         
@@ -200,17 +200,17 @@ class iVAEMLP(nn.Module):
         self.activation = activation
 
         if prior is None:
-            self.prior_dist = Normal(device=device)
+            self.prior_dist = Normal()
         else:
             self.prior_dist = prior
 
         if decoder is None:
-            self.decoder_dist = Normal(device=device)
+            self.decoder_dist = Normal()
         else:
             self.decoder_dist = decoder
 
         if encoder is None:
-            self.encoder_dist = Normal(device=device)
+            self.encoder_dist = Normal()
         else:
             self.encoder_dist = encoder
 
@@ -218,19 +218,19 @@ class iVAEMLP(nn.Module):
         self.prior_mean = torch.zeros(1).to(device)
         self.logl = MLP(self.aux_dim, self.latent_dim, self.hidden_dim, 
                         self.n_layers, activation=activation, 
-                        slope=slope, device=device)
+                        slope=slope)
         # decoder params
         self.f = MLP(self.latent_dim, self.data_dim, self.hidden_dim, 
                      self.n_layers, activation=activation, 
-                     slope=slope, device=device)
+                     slope=slope)
         self.decoder_var = .01 * torch.ones(1).to(device)
         # encoder params
         self.g = MLP(self.data_dim + self.aux_dim, self.latent_dim, self.hidden_dim, 
                      self.n_layers, activation=activation, 
-                     slope=slope, device=device)
+                     slope=slope)
         self.logv = MLP(self.data_dim + self.aux_dim, self.latent_dim, 
                         self.hidden_dim, self.n_layers, activation=activation, 
-                        slope=slope, device=device)
+                        slope=slope)
 
         self.apply(weights_init)
 

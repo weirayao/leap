@@ -15,7 +15,7 @@ from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSample
 from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSampleNS
 
 "baseline list"
-from ltcl.baselines.TCL.model import TCL
+# from ltcl.baselines.TCL.model import TCL
 from ltcl.baselines.PCL.model import PCL
 from ltcl.baselines.iVAE.model import iVAE
 from ltcl.baselines.BetaVAE.model import BetaVAE

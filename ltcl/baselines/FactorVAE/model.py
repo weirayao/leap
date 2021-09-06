@@ -28,13 +28,12 @@ class FactorVAE(pl.LightningModule):
                  beta2_D, 
                  correlation):
         # Networks & Optimizers
+        super(FactorVAE, self).__init__()
         self.z_dim = z_dim
         self.gamma = gamma
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.correlation = correlation
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
         self.lr_VAE = lr_VAE
         self.beta1_VAE = beta1_VAE
         self.beta2_VAE = beta2_VAE
@@ -48,10 +47,11 @@ class FactorVAE(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
-        zeros = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
-        x_true1 = batch['s1']['xt']
-        x_true2 = batch['s2']['xt']
+        x_true1 = batch['s1']['xt'].reshape(-1, self.input_dim)
+        x_true2 = batch['s2']['xt'].reshape(-1, self.input_dim)
+        batch_size = x_true1.shape[0]
+        ones = torch.ones(batch_size, dtype=torch.long, device=x_true1.device)
+        zeros = torch.zeros(batch_size, dtype=torch.long, device=x_true1.device)
 
         x_recon, mu, logvar, z = self.VAE(x_true1)
         vae_recon_loss = recon_loss(x_true1, x_recon)
@@ -78,8 +78,8 @@ class FactorVAE(pl.LightningModule):
             self.log("train_d_tc_loss", D_tc_loss)
             return D_tc_loss
 
-    def validation_step(self, batch, batch_idx, optimizer_idx):
-        x_true1 = batch['s1']['xt']
+    def validation_step(self, batch, batch_idx):
+        x_true1 = batch['s1']['xt'].reshape(-1, self.input_dim)
 
         x_recon, mu, logvar, z = self.VAE(x_true1)
         vae_recon_loss = recon_loss(x_true1, x_recon)
