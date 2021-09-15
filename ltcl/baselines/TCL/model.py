@@ -53,9 +53,9 @@ class TCL(pl.LightningModule):
         x = x.reshape(-1, self.input_dim)
         index = batch['s1']['ct'].repeat(length, 1)
         logits, feats = self.model(x)
-        vae_loss = tcl_loss(logits, index)
+        vae_loss = -tcl_loss(logits, index)
 
-        self.log("train_vae_loss", vae_loss)
+        self.log("train_loss", vae_loss)
         return vae_loss
 
     def validation_step(self, batch, batch_idx):
@@ -64,14 +64,14 @@ class TCL(pl.LightningModule):
         x = x.reshape(-1, self.input_dim)
         index = batch['s1']['ct'].repeat(length, 1)
         logits, feats = self.model(x)
-        vae_loss = tcl_loss(logits, index)
+        vae_loss = -tcl_loss(logits, index)
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = feats.view(-1, self.z_dim).T.detach().cpu().numpy()
         zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
         mcc = compute_mcc(zt_recon, zt_true, self.correlation)
 
         self.log("val_mcc", mcc) 
-        self.log("val_vae_loss", vae_loss)
+        self.log("val_loss", vae_loss)
         return vae_loss
 
     def configure_optimizers(self):

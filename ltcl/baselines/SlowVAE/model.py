@@ -145,6 +145,6 @@ class SlowVAE(pl.LightningModule):
         return vae_loss
 
     def configure_optimizers(self):
-        opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), 
-                                 lr=self.lr, betas=(self.beta1, self.beta2))
+        opt_v = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.parameters()), 
+                                 lr=self.lr, betas=(self.beta1, self.beta2), weight_decay=0.0001)
         return opt_v

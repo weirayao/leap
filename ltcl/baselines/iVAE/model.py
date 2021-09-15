@@ -57,5 +57,5 @@ class iVAE(pl.LightningModule):
         return vae_loss
 
     def configure_optimizers(self):
-        opt_v = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        opt_v = torch.optim.AdamW(self.model.parameters(), lr=self.lr, betas=(0.9, 0.999), weight_decay=0.0001)
         return opt_v

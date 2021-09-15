@@ -103,8 +103,8 @@ class FactorVAE(pl.LightningModule):
         return vae_loss
 
     def configure_optimizers(self):
-        opt_v = torch.optim.Adam(filter(lambda p: p.requires_grad, self.VAE.parameters()), 
-                                 lr=self.lr_VAE, betas=(self.beta1_VAE, self.beta2_VAE))
+        opt_v = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.VAE.parameters()), 
+                                 lr=self.lr_VAE, betas=(self.beta1_VAE, self.beta2_VAE), weight_decay=0.0001)
         opt_d = torch.optim.Adam(filter(lambda p: p.requires_grad, self.D.parameters()), 
                                  lr=self.lr_D, betas=(self.beta1_D, self.beta2_D))
         return [opt_v, opt_d], []

@@ -948,4 +948,4 @@ if __name__ == "__main__":
     # nonlinear_ns()
     # nonlinear_gau_ns()
     # nonlinear_gau_cins()
-    nonlinear_gau_cins_sparse()
+    # nonlinear_gau_cins_sparse()
