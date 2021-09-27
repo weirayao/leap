@@ -1,16 +1,19 @@
-# Data Generation Configuration File for Ball Dataset
-root_dir: '/data/datasets/logs/cmu_wyao/data'
+#########################
+# Dataset Configurations  #
+########################
+root_dir: '/srv/data/ltcl/data'
 dataf: 'physics_ball_5_s1'
 env: 'Ball'
 data_names: ['attrs', 'states', 'actions', 'rels']
 n_ball: 5
-nonstationary: FALSE
-mode: 'mask'
+variable_rels: FALSE
+n_class: 50
+mode: 'rgb'
 # Number of episodes
-n_rollout: 5000
+n_rollout: 10
 frame_offset: 1
 # Number of time steps in one rollout
-time_step: 100
+time_step: 500
 # Step size 0.02 s
 dt: 0.02
 train_valid_ratio: 0.8
@@ -37,4 +40,4 @@ crop_size: 64
 
 lim: [-1., 1., -1., 1.]
 # CPU
-num_workers: 1
+num_workers: 5

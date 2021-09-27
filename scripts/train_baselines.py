@@ -80,11 +80,9 @@ def main(args):
                       z_dim=cfg['VAE']['LATENT_DIM'], 
                       hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
                       beta=cfg['BetaVAE']['BETA'], 
-                      gamma=cfg['BetaVAE']['GAMMA'], 
-                      beta1=cfg['BetaVAE']['beta1_VAE'],
-                      beta2=cfg['BetaVAE']['beta2_VAE'],
+                      beta1=cfg['SlowVAE']['beta1_VAE'],
+                      beta2=cfg['SlowVAE']['beta2_VAE'],
                       lr=cfg['BetaVAE']['LR'],
-                      rate_prior=cfg['BetaVAE']['RATE_PRIOR'], 
                       correlation=cfg['MCC']['CORR'])
 
     elif cfg['MODEL'] == "SlowVAE":

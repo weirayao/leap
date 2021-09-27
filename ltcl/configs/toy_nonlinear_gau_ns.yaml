@@ -2,9 +2,9 @@
 # Model Configurations  #
 #########################
 
-ROOT: '/home/yuewen/data/datasets/logs/cmu_wyao/data'
-LOG: '/home/yuewen/data/datasets/logs'
-DATASET: 'nonlinear_gau_cins'
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'nonlinear_gau_cins_sparse'
 # DATASET: 'nonlinear_gau_ns'
 
 SPLINE:
@@ -18,23 +18,24 @@ SPLINE:
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_gau_cins.pth'
+    PATH: '/srv/data/ltcl/ckpts/spline_nonlinear_gau_cins.pth'
   
 VAE:
     GPU: [1]
     CPU: 8
     TRAIN_BS: 32
-    VAL_BS: 64
-    EPOCHS: 300
+    VAL_BS: 256
+    EPOCHS: 50
     N_VAL_SAMPLES: 1024
     LAG: 2
     LENGTH: 4
-    NCLASS: 3
+    NCLASS: 20
     TRANS_PRIOR: 'NP'
-    LR: 1.0e-3
+    LR: 2.0e-3
     BETA: 2.0e-3
     GAMMA: 2.0e-2
     SIGMA: 1.0e-6
+    L1: 1.0e-3
     INPUT_DIM: 8
     LATENT_DIM: 8
     BIAS: FALSE
@@ -48,5 +49,3 @@ VAE:
 MCC:
     FREQ: 0.1
     CORR: 'Pearson' # 'Spearman'
-
-SEED: 770

@@ -196,7 +196,7 @@ class BallEngine(Engine):
         self.n_rel_type = 3
         self.n_ball = n_ball
         self.mass = 1.
-        self.radius = 12
+        self.radius = 6
         self.balls = []
         # self.add_segments()
         self.add_balls()
@@ -312,7 +312,7 @@ class BallEngine(Engine):
                 frame = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
                 frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (3,))
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                # frame = frame[21:-19, 21:-19]
+                frame = frame[21:-19, 21:-19]
 
             if video:
                 out.write(frame)
