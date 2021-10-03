@@ -27,7 +27,7 @@ def main(args):
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
 
-    # setup_seed(cfg['SEED'])
+    setup_seed(cfg['SEED'])
 
     # Warm-start spline
     if cfg['SPLINE']['USE_WARM_START']:

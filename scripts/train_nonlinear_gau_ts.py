@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings('ignore')
+
 import torch
 import random
 import argparse
@@ -6,8 +9,6 @@ import ipdb as pdb
 import os, pwd, yaml
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
-import warnings
-warnings.filterwarnings('ignore')
 
 from train_spline import pretrain_spline
 from ltcl.modules.srnn import SRNNSynthetic
@@ -85,9 +86,6 @@ def main(args):
 
     # Train the model
     trainer.fit(model, train_loader, val_loader)
-
-    result_path = "./checkpoints/pnl.ckpt"
-    trainer.save_checkpoint(result_path)
 
 if __name__ == "__main__":
 

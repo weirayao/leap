@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from sklearn import preprocessing
 from scipy.stats import ortho_group
 from sklearn.preprocessing import scale
-from ltcl.tools.utils import controlable_sparse_transitions
+from ltcl.tools.utils import create_sparse_transitions, controlable_sparse_transitions
 
 VALIDATION_RATIO = 0.2
 root_dir = '/srv/data/ltcl/data'
@@ -1026,7 +1026,6 @@ def case1_dependency():
     lags = 2
     Nlayer = 3
     length = 4
-    Nclass = 20
     condList = []
     negSlope = 0.2
     latent_size = 8
@@ -1072,72 +1071,52 @@ def case1_dependency():
         return G
     DAG = random_dag(latent_size, 40)
     dag = nx.to_numpy_array(DAG)
-    
-    masks = create_sparse_transitions(latent_size, lags)
-    for l in range(lags):
-        transitions[l] = transitions[l] * masks[l]
-        
+
     mixingList = []
     for l in range(Nlayer - 1):
         # generate causal matrix first:
         A = ortho_group.rvs(latent_size)  # generateUniformMat( Ncomp, condThresh )
         mixingList.append(A)
 
-    yt = []; xt = []; ct = []
-    yt_ns = []; xt_ns = []; ct_ns = []
-    modMat = np.random.uniform(0, 1, (latent_size, Nclass))
-    # Mixing function
-    for j in range(Nclass):
-        ct.append(j * np.ones(batch_size))
-        y_l = np.random.normal(0, 1, (batch_size, lags, latent_size))
-        y_l = (y_l - np.mean(y_l, axis=0 ,keepdims=True)) / np.std(y_l, axis=0 ,keepdims=True)
-        
-        # Initialize the dataset
-        for i in range(lags):
-            yt.append(y_l[:,i,:])
-        mixedDat = np.copy(y_l)
+    yt = []; xt = []
+    y_l = np.random.normal(0, 1, (batch_size, lags, latent_size))
+    y_l = (y_l - np.mean(y_l, axis=0 ,keepdims=True)) / np.std(y_l, axis=0 ,keepdims=True)
+    
+    # Initialize the dataset
+    for i in range(lags):
+        yt.append(y_l[:,i,:])
+    mixedDat = np.copy(y_l)
+    for l in range(Nlayer - 1):
+        mixedDat = leaky_ReLU(mixedDat, negSlope)
+        mixedDat = np.dot(mixedDat, mixingList[l])
+    x_l = np.copy(mixedDat)
+    for i in range(lags):
+        xt.append(x_l[:,i,:])
+    # Generate time series dataset
+    for i in range(length):
+        # Transition function
+        # y_t = np.random.normal(0, 0.1, (batch_size, latent_size))
+        y_t = np.random.laplace(0, 0.1, (batch_size, latent_size))
+
+        for l in range(lags):
+            # y_t += np.tanh(np.dot(y_l[:,l,:], transitions[l]))
+            y_t += np.dot(y_l[:,l,:], transitions[l])
+        y_t = np.dot(y_t, np.ones((latent_size,latent_size))-dag)
+        yt.append(y_t)
+
+        # Mixing function
+        mixedDat = np.copy(y_t)
         for l in range(Nlayer - 1):
             mixedDat = leaky_ReLU(mixedDat, negSlope)
             mixedDat = np.dot(mixedDat, mixingList[l])
-        x_l = np.copy(mixedDat)
-        for i in range(lags):
-            xt.append(x_l[:,i,:])
-        # Generate time series dataset
-        for i in range(length):
-            # Transition function
-            y_t = np.random.normal(0, 0.1, (batch_size, latent_size))
-            # y_t = np.random.laplace(0, 0.1, (batch_size, latent_size))
-            y_t = np.multiply(y_t, modMat[:, j])
+        x_t = np.copy(mixedDat)
+        xt.append(x_t)
+        y_l = np.concatenate((y_l, y_t[:,np.newaxis,:]),axis=1)[:,1:,:]
 
-            for l in range(lags):
-                # y_t += np.tanh(np.dot(y_l[:,l,:], transitions[l]))
-                y_t += leaky_ReLU(np.dot(y_l[:,l,:], transitions[l]), negSlope)
-            y_t = leaky_ReLU(y_t, negSlope)
-            y_t = np.dot(np.ones((latent_size,latent_size))-dag, y_t)
-            yt.append(y_t)
-
-            # Mixing function
-            mixedDat = np.copy(y_t)
-            for l in range(Nlayer - 1):
-                mixedDat = leaky_ReLU(mixedDat, negSlope)
-                mixedDat = np.dot(mixedDat, mixingList[l])
-            x_t = np.copy(mixedDat)
-            xt.append(x_t)
-
-            y_l = np.concatenate((y_l, y_t[:,np.newaxis,:]),axis=1)[:,1:,:]
-        
-        yt = np.array(yt).transpose(1,0,2); xt = np.array(xt).transpose(1,0,2); ct = np.array(ct).transpose(1,0)
-        yt_ns.append(yt); xt_ns.append(xt); ct_ns.append(ct)
-        yt = []; xt = []; ct = []
-
-    yt_ns = np.vstack(yt_ns)
-    xt_ns = np.vstack(xt_ns)
-    ct_ns = np.vstack(ct_ns)
-
+    yt = np.array(yt).transpose(1,0,2); xt = np.array(xt).transpose(1,0,2)
     np.savez(os.path.join(path, "data"), 
-            yt = yt_ns, 
-            xt = xt_ns,
-            ct = ct_ns)
+            yt = yt, 
+            xt = xt)
 
     for l in range(lags):
         B = transitions[l]
@@ -1247,7 +1226,7 @@ if __name__ == "__main__":
     # nonlinear_nonGaussian_ts()
     # nonlinear_ns()
     # nonlinear_gau_ns()
-    nonlinear_gau_cins()
+    # nonlinear_gau_cins()
     # nonlinear_gau_cins_sparse()
     # instan_temporal()
     case1_dependency()
