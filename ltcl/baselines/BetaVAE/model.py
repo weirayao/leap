@@ -1,8 +1,7 @@
 """
 BetaVAE.py
-- https://github.com/bethgelab/slow_disentanglement
-- Beta-VAE --> use Contrastive Learning Data
-- No Contrastive Learning and Condition
+- https://github.com/1Konny/Beta-VAE
+- No Transition, Contrastive Learning and Condition
 """
 import torch
 import numpy as np
@@ -22,27 +21,26 @@ def reconstruction_loss(x, x_recon, distribution):
         recon_loss = F.binary_cross_entropy_with_logits(
             x_recon, x, size_average=False).div(batch_size)
     elif distribution == 'gaussian':
-        x_recon = F.sigmoid(x_recon)
         recon_loss = F.mse_loss(x_recon, x, size_average=False).div(batch_size)
     else:
         recon_loss = None
 
     return recon_loss
 
-def compute_cross_ent_normal(mu, logvar):
-    return 0.5 * (mu**2 + torch.exp(logvar)) + np.log(np.sqrt(2 * np.pi))
+def kl_divergence(mu, logvar):
+    batch_size = mu.size(0)
+    assert batch_size != 0
+    if mu.data.ndimension() == 4:
+        mu = mu.view(mu.size(0), mu.size(1))
+    if logvar.data.ndimension() == 4:
+        logvar = logvar.view(logvar.size(0), logvar.size(1))
 
-def compute_ent_normal(logvar):
-    return 0.5 * (logvar + np.log(2 * np.pi * np.e))
+    klds = -0.5*(1 + logvar - mu.pow(2) - logvar.exp())
+    total_kld = klds.sum(1).mean(0, True)
+    dimension_wise_kld = klds.mean(0)
+    mean_kld = klds.mean(1).mean(0, True)
 
-def compute_sparsity(mu, normed=True):
-    # assume couples, compute normalized sparsity
-    diff = mu[::2] - mu[1::2]
-    if normed:
-        norm = torch.norm(diff, dim=1, keepdim=True)
-        norm[norm == 0] = 1  # keep those that are same, dont divide by 0
-        diff = diff / norm
-    return torch.mean(torch.abs(diff))
+    return total_kld, dimension_wise_kld, mean_kld
 
 
 class BetaVAE(pl.LightningModule):
@@ -51,73 +49,29 @@ class BetaVAE(pl.LightningModule):
                  z_dim, 
                  hidden_dim, 
                  beta,
-                 gamma, 
-                 lr, 
-                 beta1, 
-                 beta2, 
-                 rate_prior,
+                 beta1,
+                 beta2,
+                 lr,
                  correlation):
         # Networks & Optimizers
         super(BetaVAE, self).__init__()
         self.beta = beta
+        self.beta1 = beta1
+        self.beta2 = beta2
         self.z_dim = z_dim
-        self.gamma = gamma
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.correlation = correlation
-        self.decoder_dist = 'bernoulli'
-        self.rate_prior = rate_prior * torch.ones(1, requires_grad=False)
-
+        self.decoder_dist = 'gaussian'
         self.lr = lr
-        self.beta1 = beta1
-        self.beta2 = beta2
         self.net = BetaVAEMLP(self.input_dim, self.z_dim, self.hidden_dim)
-
-    def compute_cross_ent_laplace(self, mean, logvar, rate_prior):
-        var = torch.exp(logvar)
-        sigma = torch.sqrt(var)
-        # import ipdb
-        # ipdb.set_trace()
-        device = sigma.device
-        rate_prior = rate_prior.to(device)
-        normal_dist = torch.distributions.normal.Normal(
-            torch.zeros(self.z_dim).to(device),
-            torch.ones(self.z_dim).to(device))
-
-        ce = - torch.log(rate_prior / 2) + rate_prior * sigma *\
-             np.sqrt(2 / np.pi) * torch.exp(- mean**2 / (2 * var)) -\
-             rate_prior * mean * (1 - 2 * normal_dist.cdf(mean / sigma))
-        return ce
-
-    def compute_cross_ent_combined(self, mu, logvar):
-        normal_entropy = compute_ent_normal(logvar)
-        cross_ent_normal = compute_cross_ent_normal(mu, logvar)
-        # assuming couples, do Laplace both ways
-        mu0 = mu[::2]
-        mu1 = mu[1::2]
-        logvar0 = logvar[::2]
-        logvar1 = logvar[1::2]
-        rate_prior0 = self.rate_prior
-        rate_prior1 = self.rate_prior
-        cross_ent_laplace = (
-            self.compute_cross_ent_laplace(mu0 - mu1, logvar0, rate_prior0) +
-            self.compute_cross_ent_laplace(mu1 - mu0, logvar1, rate_prior1))
-        return [x.sum(1).mean(0, True) for x in [normal_entropy,
-                                                 cross_ent_normal,
-                                                 cross_ent_laplace]]
     
     def training_step(self, batch, batch_idx):
         x = batch['s1']['xt'].reshape(-1, self.input_dim)
         x_recon, mu, logvar = self.net(x)
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
-
-        # VAE training
-        [normal_entropy, cross_ent_normal, cross_ent_laplace] = self.compute_cross_ent_combined(mu, logvar)
-        vae_loss = 2 * recon_loss
-        kl_normal = cross_ent_normal - normal_entropy
-        kl_laplace = cross_ent_laplace - normal_entropy
-        vae_loss = vae_loss + self.beta * kl_normal
-        vae_loss = vae_loss + self.gamma * kl_laplace
+        total_kld, dimension_wise_kld, mean_kld = kl_divergence(mu, logvar)
+        vae_loss = recon_loss + self.beta * total_kld
                 
         self.log("train_vae_loss", vae_loss)
         return vae_loss
@@ -127,14 +81,10 @@ class BetaVAE(pl.LightningModule):
         x = batch['s1']['xt'].reshape(-1, self.input_dim)
         x_recon, mu, logvar = self.net(x)
         recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
-
-        # VAE training
-        [normal_entropy, cross_ent_normal, cross_ent_laplace] = self.compute_cross_ent_combined(mu, logvar)
-        vae_loss = 2 * recon_loss
-        kl_normal = cross_ent_normal - normal_entropy
-        kl_laplace = cross_ent_laplace - normal_entropy
-        vae_loss = vae_loss + self.beta * kl_normal
-        vae_loss = vae_loss + self.gamma * kl_laplace
+        total_kld, dimension_wise_kld, mean_kld = kl_divergence(mu, logvar)
+        vae_loss = recon_loss + self.beta * total_kld
+                
+        self.log("train_vae_loss", vae_loss)
         
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = mu.view(-1, self.z_dim).T.detach().cpu().numpy()

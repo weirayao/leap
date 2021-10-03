@@ -1,0 +1,27 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'nonlinear_gau_cins_sparse'
+
+PCL:
+    GPU: [0]
+    CPU: 8
+    LATENT_DIM: 8
+    INPUT_DIM: 8
+    TRAIN_BS: 32
+    VAL_BS: 256
+    N_VAL_SAMPLES: 1024
+    EPOCHS: 50
+    LR: 1.0E-3
+    LAG: 2
+    HIDDEN_DIM: 128
+    ENCODER_LAYER: 4
+    SCORE_LAYER: 4
+    PIN: TRUE
+
+MCC:
+    FREQ: 0.1
+    CORR: 'Pearson' # 'Spearman' # 

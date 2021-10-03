@@ -54,7 +54,6 @@ class SRNNSyntheticNS(pl.LightningModule):
         assert infer_mode in ('R', 'F')
 
         self.z_dim = z_dim
-        self.lag = lag
         self.input_dim = input_dim
         self.lr = lr
         self.lag = lag
@@ -63,6 +62,7 @@ class SRNNSyntheticNS(pl.LightningModule):
         self.beta = beta
         self.gamma = gamma
         self.sigma = sigma
+        self.l1 = 0.0001
         self.correlation = correlation
         self.decoder_dist = decoder_dist
         self.infer_mode = infer_mode
@@ -133,6 +133,9 @@ class SRNNSyntheticNS(pl.LightningModule):
 
         # FactorVAE
         self.discriminator = Discriminator(z_dim = z_dim*self.length)
+
+        # Register skeleton logits
+        self.logits = nn.Parameter(torch.randn(self.z_dim, self.z_dim*self.lag)+4)
 
         # base distribution for calculation of log prob under the model
         self.register_buffer('base_dist_mean', torch.zeros(self.z_dim))
@@ -215,6 +218,9 @@ class SRNNSyntheticNS(pl.LightningModule):
         x, y, ct = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
         batch_size, length, _ = x.shape; ct = torch.squeeze(ct).to(torch.int64)
         x_flat = x.view(-1, self.input_dim)
+        # Adjacent matrix
+        adj_matrix = F.sigmoid(self.logits)
+        # adj_matrix = F.gumbel_softmax(self.logits, tau=0.2, hard=True)[:,:,0]
         # Inference
         if self.infer_mode == 'R':
             ft = self.enc(x_flat)
@@ -244,7 +250,8 @@ class SRNNSyntheticNS(pl.LightningModule):
         kld_normal = kld_normal.mean()
         # Future KLD
         log_qz_laplace = log_qz[:,self.lag:]
-        residuals, logabsdet = self.transition_prior(zs)
+        residuals, logabsdet = self.transition_prior(zs, adj_matrix)
+        # residuals, logabsdet = self.transition_prior(zs)
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
@@ -268,17 +275,20 @@ class SRNNSyntheticNS(pl.LightningModule):
         kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
         kld_laplace = kld_laplace.mean()
 
+        l1_loss = torch.norm(adj_matrix, 1)
         # VAE training
         if optimizer_idx == 0:
             for p in self.discriminator.parameters():
                 p.requires_grad = False
             D_z = self.discriminator(residuals.contiguous().view(batch_size, -1))
             tc_loss = (D_z[:, :1] - D_z[:, 1:]).mean()
-            loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace + self.sigma * tc_loss
+            loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace + self.sigma * tc_loss + self.l1*l1_loss
+            # loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace + self.sigma * tc_loss
             self.log("train_elbo_loss", loss)
             self.log("train_recon_loss", recon_loss)
             self.log("train_kld_normal", kld_normal)
             self.log("train_kld_laplace", kld_laplace)
+            self.log("train_l1_loss", l1_loss)
             self.log("v_tc_loss", tc_loss)
             return loss
 
@@ -293,7 +303,8 @@ class SRNNSyntheticNS(pl.LightningModule):
             zeros = torch.zeros(batch_size, dtype=torch.long).to(batch['s2']['yt'].device)
             zs_perm, _, _ = self.forward(batch['s2'])
             zs_perm = zs_perm.reshape(batch_size, length, self.z_dim)
-            residuals_perm, _ = self.transition_prior(zs_perm)
+            residuals_perm, _ = self.transition_prior(zs_perm, adj_matrix)
+            # residuals_perm, _ = self.transition_prior(zs_perm)
             residuals_perm = permute_dims(residuals_perm.contiguous().view(batch_size, -1)).detach()
             D_z_pperm = self.discriminator(residuals_perm)
             D_tc_loss = 0.5*(F.cross_entropy(D_z, zeros) + F.cross_entropy(D_z_pperm, ones))            
@@ -304,6 +315,9 @@ class SRNNSyntheticNS(pl.LightningModule):
         x, y, ct = batch['s1']['xt'], batch['s1']['yt'], batch['s1']['ct']
         batch_size, length, _ = x.shape; ct = torch.squeeze(ct).to(torch.int64)
         x_flat = x.view(-1, self.input_dim)
+        # Adjacent matrix
+        adj_matrix = F.sigmoid(self.logits)
+        # adj_matrix = F.gumbel_softmax(self.logits, tau=0.2, hard=True)[:,:,0]
         # Inference
         if self.infer_mode == 'R':
             ft = self.enc(x_flat)
@@ -333,7 +347,8 @@ class SRNNSyntheticNS(pl.LightningModule):
         kld_normal = kld_normal.mean()
         # Future KLD
         log_qz_laplace = log_qz[:,self.lag:]
-        residuals, logabsdet = self.transition_prior(zs)  
+        residuals, logabsdet = self.transition_prior(zs, adj_matrix)
+        # residuals, logabsdet = self.transition_prior(zs)
         sum_log_abs_det_jacobians = 0
         one_hot = F.one_hot(ct, num_classes=self.nclass)
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + logabsdet
@@ -356,9 +371,9 @@ class SRNNSyntheticNS(pl.LightningModule):
         log_pz_laplace = torch.sum(self.base_dist.log_prob(es), dim=1) + sum_log_abs_det_jacobians
         kld_laplace = (torch.sum(torch.sum(log_qz_laplace,dim=-1),dim=-1) - log_pz_laplace) / (length-self.lag)
         kld_laplace = kld_laplace.mean()
-
-        loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace
-
+        l1_loss = torch.norm(adj_matrix, 1)
+        loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace + self.l1 * l1_loss
+        # loss = recon_loss + self.beta * kld_normal + self.gamma * kld_laplace
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = mus.view(-1, self.z_dim).T.detach().cpu().numpy()
         zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()

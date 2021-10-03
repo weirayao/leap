@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from sklearn import preprocessing
 from scipy.stats import ortho_group
 from sklearn.preprocessing import scale
-from ltcl.tools.utils import create_sparse_transitions
+from ltcl.tools.utils import controlable_sparse_transitions
 
 VALIDATION_RATIO = 0.2
 root_dir = '/srv/data/ltcl/data'
@@ -754,12 +754,12 @@ def nonlinear_gau_cins():
     lags = 2
     Nlayer = 3
     length = 4
-    Nclass = 3
+    Nclass = 20
     condList = []
     negSlope = 0.2
     latent_size = 8
     transitions = []
-    batch_size = 50000
+    batch_size = 7500
     Niter4condThresh = 1e4
 
     path = os.path.join(root_dir, "nonlinear_gau_cins")
@@ -787,7 +787,6 @@ def nonlinear_gau_cins():
     yt = []; xt = []; ct = []
     yt_ns = []; xt_ns = []; ct_ns = []
     modMat = np.random.uniform(0, 1, (latent_size, Nclass))
-
     # Mixing function
     for j in range(Nclass):
         ct.append(j * np.ones(batch_size))
@@ -810,7 +809,7 @@ def nonlinear_gau_cins():
             y_t = np.random.normal(0, 0.1, (batch_size, latent_size))
             # y_t = np.random.laplace(0, 0.1, (batch_size, latent_size))
             y_t = np.multiply(y_t, modMat[:, j])
-            
+
             for l in range(lags):
                 # y_t += np.tanh(np.dot(y_l[:,l,:], transitions[l]))
                 y_t += leaky_ReLU(np.dot(y_l[:,l,:], transitions[l]), negSlope)
@@ -839,6 +838,10 @@ def nonlinear_gau_cins():
             yt = yt_ns, 
             xt = xt_ns,
             ct = ct_ns)
+
+    for l in range(lags):
+        B = transitions[l]
+        np.save(os.path.join(path, "W%d"%(lags-l)), B)
 
 def nonlinear_gau_cins_sparse():
     """
@@ -871,9 +874,9 @@ def nonlinear_gau_cins_sparse():
         transitions.append(B)
     transitions.reverse()
 
-    masks = create_sparse_transitions(latent_size, lags)
+    mask = controlable_sparse_transitions(latent_size, lags, sparsity=0.3)
     for l in range(lags):
-        transitions[l] = transitions[l] * masks[l]
+        transitions[l] = transitions[l] * mask
         
     mixingList = []
     for l in range(Nlayer - 1):
@@ -1244,7 +1247,7 @@ if __name__ == "__main__":
     # nonlinear_nonGaussian_ts()
     # nonlinear_ns()
     # nonlinear_gau_ns()
-    # nonlinear_gau_cins()
+    nonlinear_gau_cins()
     # nonlinear_gau_cins_sparse()
     # instan_temporal()
     case1_dependency()

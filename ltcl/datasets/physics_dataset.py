@@ -22,12 +22,13 @@ from tqdm import tqdm
 from torch.autograd import Variable
 from torch.utils.data import Dataset
 
-from ltcl.tools.physics_engine import BallEngine, ClothEngine
+from ltcl.tools.physics_engine import BallEngine
 
 from ltcl.tools.utils import rand_float, rand_int
 from ltcl.tools.utils import init_stat, combine_stat, load_data, store_data
 from ltcl.tools.utils import resize, crop
 from ltcl.tools.utils import adjust_brightness, adjust_saturation, adjust_contrast, adjust_hue
+import random
 import ipdb as pdb
 
 def pil_loader(path):
@@ -106,7 +107,8 @@ def gen_Ball(info):
     n_rollout, time_step = info['n_rollout'], info['time_step']
     dt, video, args, phase = info['dt'], info['video'], info['args'], info['phase']
     n_ball = info['n_ball']
-    ns =  info['nonstationary']
+    modVec = info['mod_vec']
+    param_load = info['param_load']
 
     np.random.seed(round(time.time() * 1000 + thread_idx) % 2 ** 32)
 
@@ -118,18 +120,12 @@ def gen_Ball(info):
 
     engine = BallEngine(dt, state_dim, action_dim=2)
 
-    if not ns:
-        param_load = np.load('/data/datasets/logs/cmu_wyao/data/rels.npy')
-
     for i in tqdm(range(n_rollout)):
         rollout_idx = thread_idx * n_rollout + i
         rollout_dir = os.path.join(data_dir, str(rollout_idx))
         os.system('mkdir -p ' + rollout_dir)
-        if ns:
-            engine.init(n_ball)
-        else:
-            # Use the same relations for every episode
-            engine.init(n_ball, param_load=param_load)
+        # Use the same relations for every episode
+        engine.init(n_ball, param_load=param_load)
 
         n_obj = engine.num_obj
         attrs_all = np.zeros((time_step, n_obj, attr_dim))
@@ -155,10 +151,12 @@ def gen_Ball(info):
             states_all[j, :, :vel_dim] = pos
             states_all[j, :, vel_dim:] = vel
             rel_attrs_all[j] = engine.param
-            act = np.random.laplace(loc=0.0, scale=1, size=(5,2)) * 30 
+            act += (np.random.rand(n_obj, 2) - 0.5) * 600 - act * 0.1 - state[:, 2:] * 0.1
+            act = np.clip(act, -1000, 1000)
+            act = np.multiply(act, modVec)
             # act += np.random.laplace(loc=0.0, scale=0.5, size=(5,2)) * 300 - act * 0.1 - state[:, 2:] * 0.1
             # act += (np.random.rand(n_obj, 2) - 0.5) * 600 - act * 0.1 - state[:, 2:] * 0.1
-            act = np.clip(act, -1000, 1000)
+            # act = np.clip(act, -1000, 1000)
             engine.step(act)
 
             actions_all[j] = act.copy()
@@ -179,100 +177,9 @@ def gen_Ball(info):
 
     return stats
 
-
-def gen_Cloth(info):
-    env, env_idx = info['env'], info['env_idx']
-    thread_idx, data_dir, data_names = info['thread_idx'], info['data_dir'], info['data_names']
-    n_rollout, time_step = info['n_rollout'], info['time_step']
-    dt, args, phase = info['dt'], info['args'], info['phase']
-    vis_width, vis_height = info['vis_width'], info['vis_height']
-
-    state_dim = args.state_dim
-    action_dim = args.action_dim
-    dt = 1. / 60.
-
-    np.random.seed(round(time.time() * 1000 + thread_idx) % 2 ** 32)
-
-    stats = [init_stat(state_dim), init_stat(action_dim)]
-
-    engine = ClothEngine(dt, state_dim, action_dim)
-
-    import pyflex
-    pyflex.init()
-
-    for i in tqdm(range(n_rollout)):
-        rollout_idx = thread_idx * n_rollout + i
-        rollout_dir = os.path.join(data_dir, str(rollout_idx))
-        os.system('mkdir -p ' + rollout_dir)
-
-        engine.init(pyflex)
-
-        scene_params = engine.scene_params
-
-        action = np.zeros(4)
-        states_all = np.zeros((time_step, engine.n_particles, state_dim))
-        actions_all = np.zeros((time_step, 1, action_dim))
-
-        # drop the cloth down
-        engine.set_action(action)
-        engine.step()
-
-        for j in range(time_step):
-            positions = pyflex.get_positions().reshape(-1, 4)[:, :3]
-
-            # sample the action
-            if j % 5 == 0:
-                ctrl_pts = rand_int(0, 8)
-
-                act_lim = 0.05
-                dx = rand_float(-act_lim, act_lim)
-                dz = rand_float(-act_lim, act_lim)
-                dy = 0.05
-
-                action = np.array([ctrl_pts, dx, dy, dz])
-
-            else:
-                action[2] = 0.
-
-            # store the rollout information
-            state = engine.get_state()
-            states_all[j] = state
-
-            tga_path = os.path.join(rollout_dir, '%d.tga' % j)
-            pyflex.render(capture=True, path=tga_path)
-            tga = Image.open(tga_path)
-            tga = np.array(tga)[:, 60:780, :3][:, :, ::-1]
-            tga = cv2.resize(tga, (vis_width, vis_height), interpolation=cv2.INTER_AREA)
-            os.system('rm ' + tga_path)
-
-            jpg_path = os.path.join(rollout_dir, 'fig_%d.jpg' % j)
-            cv2.imwrite(jpg_path, tga)
-
-            actions_all[j, 0] = action.copy()
-
-            engine.set_action(action)
-            engine.step()
-
-        datas = [states_all, actions_all, scene_params]
-        store_data(data_names, datas, rollout_dir + '.h5')
-
-        datas = [datas[j].astype(np.float64) for j in range(len(datas))]
-
-        for j in range(len(stats)):
-            stat = init_stat(stats[j].shape[0])
-            stat[:, 0] = np.mean(datas[j], axis=(0, 1))[:]
-            stat[:, 1] = np.std(datas[j], axis=(0, 1))[:]
-            stat[:, 2] = datas[j].shape[0]
-            stats[j] = combine_stat(stats[j], stat)
-
-    pyflex.clean()
-
-    return stats
-
-
 class PhysicsDataset(Dataset):
 
-    def __init__(self, args, phase, trans_to_tensor=None, loader=default_loader):
+    def __init__(self, args, phase='raw', trans_to_tensor=None, loader=default_loader):
 
         self.args = args
         self.phase = phase
@@ -280,35 +187,24 @@ class PhysicsDataset(Dataset):
         self.loader = loader
 
         dataf = os.path.join(args.root_dir, args.dataf + '_' + args.env)
+        self.dataf = dataf
         self.data_dir = os.path.join(dataf, phase)
         self.stat_path = os.path.join(dataf, 'stat.h5')
         self.stat = None
         os.system('mkdir -p ' + self.data_dir)
         self.data_names = ['attrs', 'states', 'actions', 'rels']
         ratio = self.args.train_valid_ratio
-
-        if phase in {'train'}:
-            self.n_rollout = int(self.args.n_rollout * ratio)
-        elif phase in {'valid'}:
-            self.n_rollout = self.args.n_rollout - int(self.args.n_rollout * ratio)
-        elif phase in {'raw'}:
-            self.n_rollout = self.args.n_rollout
-        else:
-            raise AssertionError("Unknown phase")
-
+        self.n_rollout = self.args.n_rollout
         self.T = self.args.time_step
         self.scale_size = args.scale_size
         self.crop_size = args.crop_size
-        # K-means semantic segmentation
-        self.mode = args.mode
-        assert self.mode in ('rgb', 'mask')
-        with open("/home/cmu_wyao/kmeans_segmenter.pkl", "rb") as f:
-            self.segmenter = pickle.load(f)
+        self.n_class = self.args.n_class
+        self.length  = 6
 
     def load_data(self):
         self.stat = load_data(self.data_names, self.stat_path)
 
-    def gen_data(self):
+    def gen_data(self, modVec = None, param_load=None):
         # if the data hasn't been generated, generate the data
         n_rollout, time_step, dt = self.n_rollout, self.args.time_step, self.args.dt
         assert n_rollout % self.args.num_workers == 0
@@ -318,7 +214,7 @@ class PhysicsDataset(Dataset):
         for i in range(self.args.num_workers):
             info = {'thread_idx': i,
                     'data_dir': self.data_dir,
-                    'nonstationary': self.args.nonstationary,
+                    'nonstationary': self.args.variable_rels,
                     'data_names': self.data_names,
                     'n_rollout': n_rollout // self.args.num_workers,
                     'time_step': time_step,
@@ -327,80 +223,159 @@ class PhysicsDataset(Dataset):
                     'phase': self.phase,
                     'args': self.args,
                     'vis_height': self.args.height_raw,
-                    'vis_width': self.args.width_raw}
+                    'vis_width': self.args.width_raw, 
+                    'mod_vec': modVec,
+                    'param_load': param_load}
 
-            if self.args.env in ['Ball']:
-                info['env'] = 'Ball'
-                info['n_ball'] = self.args.n_ball
-            elif self.args.env in ['Cloth']:
-                info['env'] = 'Cloth'
-                info['env_idx'] = 15
-
+            info['env'] = 'Ball'
+            info['n_ball'] = self.args.n_ball
+                
             infos.append(info)
 
         cores = self.args.num_workers
         pool = mp.Pool(processes=cores)
         env = self.args.env
-        if env in ['Ball']:
-            data = pool.map(gen_Ball, infos)
-        elif env in ['Cloth']:
-            data = pool.map(gen_Cloth, infos)
-        else:
-            raise AssertionError("Unknown env")
+        data = pool.map(gen_Ball, infos)
 
         print("Training data generated, warpping up stats ...")
 
-        if self.phase in ('train', 'raw'):
-            if env in ['Ball']:
-                self.stat = [init_stat(self.args.attr_dim),
-                             init_stat(self.args.state_dim),
-                             init_stat(self.args.action_dim)]
-            elif env in ['Cloth']:
-                self.stat = [init_stat(self.args.state_dim),
-                             init_stat(self.args.action_dim)]
+        self.stat = [init_stat(self.args.attr_dim),
+                     init_stat(self.args.state_dim),
+                     init_stat(self.args.action_dim)]
 
-            for i in range(len(data)):
-                for j in range(len(self.stat)):
-                    self.stat[j] = combine_stat(self.stat[j], data[i][j])
+        for i in range(len(data)):
+            for j in range(len(self.stat)):
+                self.stat[j] = combine_stat(self.stat[j], data[i][j])
 
-            store_data(self.data_names[:len(self.stat)], self.stat, self.stat_path)
-
-        else:
-            print("Loading stat from %s ..." % self.stat_path)
-            self.stat = load_data(self.data_names, self.stat_path)
+        store_data(self.data_names[:len(self.stat)], self.stat, self.stat_path)
 
     def __len__(self):
         args = self.args
-        length = self.n_rollout * (args.time_step - 3)
+        length = self.n_class * self.n_rollout * args.time_step
         return length
 
     def __getitem__(self, idx):
         args = self.args
         suffix = '.png'
-        offset = args.time_step - 3
-        src_rollout = idx // offset
-        src_timestep = idx % offset
+        offset = args.time_step - self.length + 1
+        src_phase = idx % self.n_class
+        src_rollout = (idx // self.n_class) // args.time_step
+        src_timestep = (idx // self.n_class) % args.time_step
+        des_phase = rand_int(0, self.n_class)
+        des_rollout = rand_int(0, self.n_rollout)
+        des_timestep = rand_int(0, args.time_step)
+        src_path = os.path.join(self.dataf, str(src_phase), str(src_rollout), 'fig_%d%s' % (src_timestep, suffix))
+        des_path = os.path.join(self.dataf, str(des_phase), str(des_rollout), 'fig_%d%s' % (des_timestep, suffix))
+
+        src = self.loader(src_path)
+        des = self.loader(des_path)
+
+        src = resize_and_crop(self.phase, src, self.scale_size, self.crop_size)
+        des = resize_and_crop(self.phase, des, self.scale_size, self.crop_size)
+
+        src = self.trans_to_tensor(src)
+        des = self.trans_to_tensor(des)
+        sample = {'src': src, 'des': des}
+        return sample
+
+class PhysicsDatasetTwoSample(Dataset):
+
+    def __init__(self, args, phase='raw', trans_to_tensor=None, loader=default_loader):
+
+        self.args = args
+        self.phase = phase
+        self.trans_to_tensor = trans_to_tensor
+        self.loader = loader
+
+        dataf = os.path.join(args.root_dir, args.dataf + '_' + args.env)
+        self.dataf = dataf
+        self.data_dir = os.path.join(dataf, phase)
+        self.stat_path = os.path.join(dataf, 'stat.h5')
+        self.stat = None
+        os.system('mkdir -p ' + self.data_dir)
+        self.data_names = ['attrs', 'states', 'actions', 'rels']
+        ratio = self.args.train_valid_ratio
+        self.n_rollout = self.args.n_rollout
+        self.T = self.args.time_step
+        self.scale_size = args.scale_size
+        self.crop_size = args.crop_size
+        self.n_class = self.args.n_class
+        self.length  = 6
+
+    def load_data(self):
+        self.stat = load_data(self.data_names, self.stat_path)
+
+    def gen_data(self, modVec = None, param_load=None):
+        # if the data hasn't been generated, generate the data
+        n_rollout, time_step, dt = self.n_rollout, self.args.time_step, self.args.dt
+        assert n_rollout % self.args.num_workers == 0
+
+        print("Generating data ... n_rollout=%d, time_step=%d" % (n_rollout, time_step))
+        infos = []
+        for i in range(self.args.num_workers):
+            info = {'thread_idx': i,
+                    'data_dir': self.data_dir,
+                    'nonstationary': self.args.variable_rels,
+                    'data_names': self.data_names,
+                    'n_rollout': n_rollout // self.args.num_workers,
+                    'time_step': time_step,
+                    'dt': dt,
+                    'video': False,
+                    'phase': self.phase,
+                    'args': self.args,
+                    'vis_height': self.args.height_raw,
+                    'vis_width': self.args.width_raw, 
+                    'mod_vec': modVec,
+                    'param_load': param_load}
+
+            info['env'] = 'Ball'
+            info['n_ball'] = self.args.n_ball
+                
+            infos.append(info)
+
+        cores = self.args.num_workers
+        pool = mp.Pool(processes=cores)
+        env = self.args.env
+        data = pool.map(gen_Ball, infos)
+
+        print("Training data generated, warpping up stats ...")
+
+        self.stat = [init_stat(self.args.attr_dim),
+                     init_stat(self.args.state_dim),
+                     init_stat(self.args.action_dim)]
+
+        for i in range(len(data)):
+            for j in range(len(self.stat)):
+                self.stat[j] = combine_stat(self.stat[j], data[i][j])
+
+        store_data(self.data_names[:len(self.stat)], self.stat, self.stat_path)
+
+    def __len__(self):
+        args = self.args
+        length = self.n_class * self.n_rollout * (args.time_step - self.length + 1)
+        return length
+    
+    def retrieve_by_index(self, idx):
+        args = self.args
+        suffix = '.png'
+        offset = args.time_step - self.length + 1
+        src_phase = idx % self.n_class
+        src_rollout = (idx // self.n_class) // offset
+        src_timestep = (idx // self.n_class) % offset
         '''
         used for dynamics modeling
         '''
         imgs = []
         arrs = []
-        data_path = os.path.join(self.data_dir, str(src_rollout) + '.h5')
+        data_path = os.path.join(self.dataf, str(src_phase), str(src_rollout) + '.h5')
         metadata = load_data(self.data_names, data_path)
         # load images for dynamics prediction
-        for i in range(4):
-            path = os.path.join(self.data_dir, str(src_rollout), 'fig_%d%s' % (src_timestep + i, suffix))
+        for i in range(self.length):
+            path = os.path.join(self.dataf, str(src_phase), str(src_rollout), 'fig_%d%s' % (src_timestep + i, suffix))
             img = self.loader(path)
             img = resize_and_crop(self.phase, img, self.scale_size, self.crop_size)
-            arr = np.array(img).reshape(-1,3)
-            arrs.append(arr)
             img = self.trans_to_tensor(img)
             imgs.append(img)
-        arrs = np.concatenate(arrs, axis=0)
-        labels = self.segmenter.predict(arrs).reshape(4, self.crop_size, self.crop_size)
-        masks = torch.nn.functional.one_hot(torch.LongTensor(labels))
-        # Remove background
-        masks = masks[0,:,:,1:]
         imgs = torch.stack(imgs, 0)
         
         # get ground truth edge type
@@ -423,14 +398,30 @@ class PhysicsDataset(Dataset):
 
         # get ground truth states
         states = metadata[1] / 80.
-        kps_gt = states[src_timestep:src_timestep + 4, :, :4]
+        kps_gt = states[src_timestep:src_timestep + self.length, :, :4]
         kps_gt[:, :, 1] *= -1
         kps_gt = torch.FloatTensor(kps_gt)
         actions = metadata[2] / 600.
-        actions = actions[src_timestep:src_timestep + 4]
+        actions = actions[src_timestep:src_timestep + self.length]
         actions = torch.FloatTensor(actions)
+        return imgs, kps_gt, graph_gt, actions, src_phase
+                  
+    def __getitem__(self, idx):
 
-        if self.mode == 'rgb':
-            return imgs, kps_gt, graph_gt, actions
-        elif self.mode == 'mask':
-            return masks, kps_gt, graph_gt, actions
+        imgs, kps_gt, graph_gt, actions, src_phase = self.retrieve_by_index(idx)
+        idx_rnd = random.randint(0, self.__len__() -1)
+        imgsr, kps_gtr, graph_gtr, actionsr, src_phaser = self.retrieve_by_index(idx_rnd)
+
+        sample = {"s1": {"yt": kps_gt, 
+                         "xt": imgs,
+                         "graph_gt": graph_gt,
+                         "actions": actions,
+                         "ct": int(src_phase)},
+                  "s2": {"yt": kps_gtr, 
+                         "xt": imgsr,
+                         "graph_gt": graph_gtr,
+                         "actions": actionsr,
+                         "ct": int(src_phaser)}
+                  }
+
+        return sample

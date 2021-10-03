@@ -1,0 +1,50 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'linear_nongaussian_ts'
+ABLATION: 'RI'
+NS: FALSE
+
+SPLINE:
+    USE_WARM_START: TRUE
+    TYPE: 'laplacian'
+    STEPS: 5000
+    LR: 0.001
+    CUDA: FALSE
+    BS: 64
+    LATENT_DIM: 8
+    BOUND: 5
+    BINS: 8
+    ORDER: 'linear'
+    PATH: '/srv/data/ltcl/ckpts/spline_toy_linear.pth'
+  
+VAE:
+    GPU: [1]
+    CPU: 8
+    TRAIN_BS: 64
+    VAL_BS: 128
+    EPOCHS: 300
+    N_VAL_SAMPLES: 1280
+    LAG: 2
+    LENGTH: 4
+    TRANS_PRIOR: 'L'
+    LR: 1.0e-3
+    BETA: 0.003
+    GAMMA: 0.009
+    SIGMA: 0.000001
+    INPUT_DIM: 8
+    LATENT_DIM: 8
+    BIAS: FALSE
+    ENC:
+        HIDDEN_DIM: 128
+    DEC:
+        HIDDEN_DIM: 128
+        DIST: 'gaussian'
+    PIN: TRUE
+
+MCC:
+    FREQ: 0.1
+    CORR: 'Pearson' # 'Spearman' # 

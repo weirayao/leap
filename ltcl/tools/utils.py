@@ -14,8 +14,9 @@ import matplotlib.transforms as transforms
 import yaml
 
 
-def create_sparse_transitions(n_nodes, lags):
+def create_sparse_transitions(n_nodes, lags, SEED):
     masks = [ ]
+    np.random.seed(SEED)
     for i in range(lags):
         mask = np.random.randint(0, 2, (n_nodes, n_nodes))
         for i in range(n_nodes):

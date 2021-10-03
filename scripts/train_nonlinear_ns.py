@@ -13,7 +13,8 @@ from train_spline import pretrain_spline
 from ltcl.modules.srnn_ns import SRNNSyntheticNS
 from ltcl.tools.utils import load_yaml
 from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSampleNS
-
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 def main(args):
 
@@ -79,11 +80,22 @@ def main(args):
 
     log_dir = os.path.join(cfg["LOG"], current_user, args.exp)
 
+    checkpoint_callback = ModelCheckpoint(monitor='val_mcc', 
+                                          save_top_k=1, 
+                                          mode='max')
+
+    early_stop_callback = EarlyStopping(monitor="val_mcc", 
+                                        min_delta=0.00, 
+                                        patience=50, 
+                                        verbose=False, 
+                                        mode="max")
+                                        
     trainer = pl.Trainer(default_root_dir=log_dir,
                          gpus=cfg['VAE']['GPU'], 
                          val_check_interval = cfg['MCC']['FREQ'],
                          max_epochs=cfg['VAE']['EPOCHS'],
-                         deterministic=True)
+                         deterministic=True,
+                         callbacks=[checkpoint_callback, early_stop_callback])
 
     # Train the model
     trainer.fit(model, train_loader, val_loader)

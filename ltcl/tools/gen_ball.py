@@ -2,6 +2,7 @@ import argparse
 import torchvision.transforms as transforms
 
 import os
+import numpy as np
 from ltcl.datasets.physics_dataset import PhysicsDataset
 from ltcl.tools.utils import load_yaml
 import yaml
@@ -41,11 +42,22 @@ def main(args):
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
+    sparsity = 0.67
+    n_ball = cfg['n_ball']
+    param_load = None
+    if not cfg['variable_rels']:
+        param_load = np.zeros((n_ball * (n_ball - 1) // 2, 2))
+        n_rels = len(param_load)
+        num_nonzero = int(n_rels * sparsity)
+        choice = np.random.choice(n_rels, size=num_nonzero, replace=False)
+        param_load[choice, 0] = 1
+        param_load[choice, 1] = np.random.rand(num_nonzero) * 10 + 20
 
     datasets = {}
-    phase = 'raw'
-    datasets[phase] = PhysicsDataset(namespace, phase=phase, trans_to_tensor=trans_to_tensor)
-    datasets[phase].gen_data()
+    modMat = np.random.uniform(0, 1, (cfg['n_ball'], 2, cfg['n_class']))
+    for phase in range(cfg['n_class']):
+        datasets[phase] = PhysicsDataset(namespace, phase=str(phase), trans_to_tensor=trans_to_tensor)
+        datasets[phase].gen_data(modVec=modMat[:,:,phase], param_load=param_load)
 
 if __name__ == "__main__":
 

@@ -22,7 +22,6 @@ def reconstruction_loss(x, x_recon, distribution):
         recon_loss = F.binary_cross_entropy_with_logits(
             x_recon, x, size_average=False).div(batch_size)
     elif distribution == 'gaussian':
-        x_recon = F.sigmoid(x_recon)
         recon_loss = F.mse_loss(x_recon, x, size_average=False).div(batch_size)
     else:
         recon_loss = None
@@ -66,7 +65,7 @@ class SlowVAE(pl.LightningModule):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.correlation = correlation
-        self.decoder_dist = 'bernoulli'
+        self.decoder_dist = 'gaussian'
         self.rate_prior = rate_prior * torch.ones(1, requires_grad=False)
 
         self.lr = lr
@@ -106,9 +105,14 @@ class SlowVAE(pl.LightningModule):
                                                  cross_ent_laplace]]
     
     def training_step(self, batch, batch_idx):
-        x = batch['s1']['xt'].reshape(-1, self.input_dim)
-        x_recon, mu, logvar = self.net(x)
-        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        x = batch['s1']['xt']
+        x_pst = x[:,:-1,:]
+        x_cur = x[:,1:,:]
+        cat = torch.cat((x_pst.reshape(-1, self.input_dim), 
+                         x_cur.reshape(-1, self.input_dim)), 
+                         dim=0)
+        x_recon, mu, logvar = self.net(cat)
+        recon_loss = reconstruction_loss(cat, x_recon, self.decoder_dist)
 
         # VAE training
         [normal_entropy, cross_ent_normal, cross_ent_laplace] = self.compute_cross_ent_combined(mu, logvar)
@@ -123,9 +127,14 @@ class SlowVAE(pl.LightningModule):
 
 
     def validation_step(self, batch, batch_idx):
-        x = batch['s1']['xt'].reshape(-1, self.input_dim)
-        x_recon, mu, logvar = self.net(x)
-        recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
+        x = batch['s1']['xt']
+        x_pst = x[:,:-1,:]
+        x_cur = x[:,1:,:]
+        cat = torch.cat((x_pst.reshape(-1, self.input_dim), 
+                         x_cur.reshape(-1, self.input_dim)), 
+                         dim=0)
+        x_recon, mu, logvar = self.net(cat)
+        recon_loss = reconstruction_loss(cat, x_recon, self.decoder_dist)
 
         # VAE training
         [normal_entropy, cross_ent_normal, cross_ent_laplace] = self.compute_cross_ent_combined(mu, logvar)
@@ -136,6 +145,8 @@ class SlowVAE(pl.LightningModule):
         vae_loss = vae_loss + self.gamma * kl_laplace
         
         # Compute Mean Correlation Coefficient (MCC)
+
+        _, mu, _ = self.net(x.view(-1, self.input_dim))
         zt_recon = mu.view(-1, self.z_dim).T.detach().cpu().numpy()
         zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
         mcc = compute_mcc(zt_recon, zt_true, self.correlation)

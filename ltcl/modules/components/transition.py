@@ -129,7 +129,7 @@ class NPTransitionPrior(nn.Module):
         
         self.gs = nn.ModuleList(gs)
     
-    def forward(self, x):
+    def forward(self, x, masks=None):
         # x: [BS, T, D] -> [BS, T-L, L+1, D]
         batch_size, length, input_dim = x.shape
         # init_hiddens = self.init_hiddens.repeat(batch_size, 1, 1)
@@ -143,13 +143,19 @@ class NPTransitionPrior(nn.Module):
         residuals = [ ]
         sum_log_abs_det_jacobian = 0
         for i in range(input_dim):
-            inputs = torch.cat((yy, xx[:,:,i]),dim=-1)
+            if masks is None:
+                inputs = torch.cat((yy, xx[:,:,i]),dim=-1)
+            else:
+                mask = masks[i]
+                inputs = torch.cat((yy*mask, xx[:,:,i]),dim=-1)
             residual = self.gs[i](inputs)
-            pdd = jacobian(self.gs[i], inputs, create_graph=True, vectorize=True)
+            with torch.enable_grad():
+                pdd = jacobian(self.gs[i], inputs, create_graph=True, vectorize=True)
             # Determinant of low-triangular mat is product of diagonal entries
             logabsdet = torch.log(torch.abs(torch.diag(pdd[:,0,:,-1])))
             sum_log_abs_det_jacobian += logabsdet
             residuals.append(residual)
+
         residuals = torch.cat(residuals, dim=-1)
         residuals = residuals.reshape(batch_size, -1, input_dim)
         sum_log_abs_det_jacobian = torch.sum(sum_log_abs_det_jacobian.reshape(batch_size, length-self.L), dim=1)

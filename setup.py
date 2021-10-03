@@ -35,7 +35,8 @@ setup(
         "torchaudio",
         "h5py",
         "ipdb",
-        "opencv-python"
+        "opencv-python",
+        "pymunk"
     ],
     tests_require=[
         "pytest"

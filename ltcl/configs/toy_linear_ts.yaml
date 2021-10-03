@@ -2,8 +2,8 @@
 # Model Configurations  #
 #########################
 
-ROOT: '/data/datasets/logs/cmu_wyao/data'
-LOG: '/data/datasets/logs'
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
 DATASET: 'linear_nongaussian_ts'
 
 SPLINE:
@@ -17,10 +17,10 @@ SPLINE:
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/data/datasets/logs/spline_linear_nongaussian_ts.pth'
+    PATH: '/srv/data/ltcl/ckpts/spline_toy_linear.pth'
   
 VAE:
-    GPU: [3]
+    GPU: [1]
     CPU: 8
     TRAIN_BS: 64
     VAL_BS: 128
@@ -29,7 +29,7 @@ VAE:
     LAG: 2
     LENGTH: 4
     TRANS_PRIOR: 'L'
-    LR: 0.0005
+    LR: 1.0e-3
     BETA: 0.003
     GAMMA: 0.009
     SIGMA: 0.000001
@@ -46,5 +46,3 @@ VAE:
 MCC:
     FREQ: 0.1
     CORR: 'Pearson' # 'Spearman' # 
-
-SEED: 100
