@@ -1,18 +1,45 @@
-# Representing Latent Causal Mechanisms in a Neural Network under Temporal Structure
-This project uses temporal constraints to discover temporal causal factors which have time-delayed causal relationships in between. We first assume  linear underlying transition matrix (can be relaxed to sparsely-connected RNNs/Transformers). We allow completely nonlinear mixing function which is stationary over time (which may also be relaxed to cross-attention to sources at each layer like Perceiver). First. the latent factors are identifiable at least up to permutation and affine transformation. Then we recover the temporal causal relations among latent variables under three conditions. Each of the three different conditions can be used to resolve the affine transformation and establish identifiability: 
+# LEAP: Learning Temporally Causal Latent Processes from General Temporal Data
 
-- Assume process noise terms are non-Gaussian
-- Latent process has independent transition dynamics, i.e., transition matrix is sparse. This condition contains previous results in Aapo where we have separate independent processes as special case.
-- Conditional distribution is not simple, mostly by excluding families where, roughly speaking, only the mean is modulated.
-- Prior information (different process $L_1, L_2$ slow /fast, not assuming independent processes) 
+### Overview
+In this project, we consider both a nonparametric, nonstationary setting and a parametric setting for the latent processes and propose two provable conditions under which temporally causal latent processes can be identified from their nonlinear mixtures. We propose LEAP, a theoretically-grounded architecture that extends Variational Autoencoders (VAEs) by enforcing our conditions through proper constraints in causal process prior. Experimental result on various data sets demonstrate that temporally causal latent processes are reliably identified from observed variables under different dependency structures and that our approach considerably outperforms baselines that do not leverage history or nonstationarity information. This is one of the first works that successfully recover time-delayed latent processes from nonlinear mixtures without using sparsity or minimality assumptions. 
 
-To install the project. Clone the project and pip install it with editable mode: 
+**Our Approach:** we leverage **nonstationarity** in process noise or **functional and distributional forms** of temporal statistics to identify temporally causal latent processes from observation.
+<p align="center">
+  <img align="middle" src="https://github.com/anonymous-authors-iclr2022-481/leap/blob/main/imgs/motivation.jpg" alt="relational inference" width="800"/>
+</p>
 
+<!-- *In addition to structure, our approach allows inferring Granger-causal effect signs*:
+<p align="center">
+  <img align="middle" src="https://github.com/i6092467/GVAR/blob/master/images/scheme_panel_2.png" alt="interpretable relational inference" width="5000"/>
+</p>
+ -->
+**Framework**: LEAP consists of (A) encoders and decoders for specific data types; (B) a recurrent inference network that approximates the posteriors of latent causal variables, and (C) a causal process prior network that models nonstationary latent causal processes with independent noise (IN) condition constraints.
+<p align="center">
+  <img align="middle" src="https://github.com/anonymous-authors-iclr2022-481/leap/blob/main/imgs/overall.jpg" width="700"/>
+</p>
 
- ``
- git clone https://github.com/weirayao/ltcl
- ``
- 
- ``
- pip install -e .
- ``
+### Experiments
+Experiment results are showcased in Jupyter Notebooks in `/tests` folder. Each notebook contains the scripts for analysis and visualization for one specific experiment.
+
+<p align="center">
+  <img align="middle" src="https://github.com/anonymous-authors-iclr2022-481/leap/blob/main/imgs/np_syn.png" width="600"/>
+</p>
+
+Run the scripts in `/ltcl/scripts` to generate results for experiment.
+
+Further details are documented within the code.
+
+### Requirements
+To install it, create a conda environment with `Python>=3.7` and follow the instructions below. Note, that the current implementation of LEAP requires a GPU.
+```
+conda create -n ltcl python=3.7
+cd ltcl
+pip install -e .
+```
+
+### Datasets
+
+- Synthetic data: `python ltcl/datasets/gen_dataset.py `
+- KittiMask: https://github.com/bethgelab/slow_disentanglement
+- Mass-Spring system: https://yunzhuli.github.io/V-CDN/
+- CMU Mocap databse: http://mocap.cs.cmu.edu/
