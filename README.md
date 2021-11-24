@@ -5,7 +5,7 @@ In this project, we consider both a nonparametric, nonstationary setting and a p
 
 **Our Approach:** we leverage **nonstationarity** in process noise or **functional and distributional forms** of temporal statistics to identify temporally causal latent processes from observation.
 <p align="center">
-  <img align="middle" src="https://github.com/anonymous-authors-iclr2022-481/leap/blob/main/imgs/motivation.jpg" alt="relational inference" width="800"/>
+  <img align="middle" src="https://github.com/weirayao/leap/blob/main/imgs/motivation.jpg" alt="relational inference" width="800"/>
 </p>
 
 <!-- *In addition to structure, our approach allows inferring Granger-causal effect signs*:
@@ -15,14 +15,14 @@ In this project, we consider both a nonparametric, nonstationary setting and a p
  -->
 **Framework**: LEAP consists of (A) encoders and decoders for specific data types; (B) a recurrent inference network that approximates the posteriors of latent causal variables, and (C) a causal process prior network that models nonstationary latent causal processes with independent noise (IN) condition constraints.
 <p align="center">
-  <img align="middle" src="https://github.com/anonymous-authors-iclr2022-481/leap/blob/main/imgs/overall.jpg" width="700"/>
+  <img align="middle" src="https://github.com/weirayao/leap/blob/main/imgs/overall.jpg" width="700"/>
 </p>
 
 ### Experiments
 Experiment results are showcased in Jupyter Notebooks in `/tests` folder. Each notebook contains the scripts for analysis and visualization for one specific experiment.
 
 <p align="center">
-  <img align="middle" src="https://github.com/anonymous-authors-iclr2022-481/leap/blob/main/imgs/np_syn.png" width="600"/>
+  <img align="middle" src="https://github.com/weirayao/leap/blob/main/imgs/np_syn.png" width="600"/>
 </p>
 
 Run the scripts in `/ltcl/scripts` to generate results for experiment.
