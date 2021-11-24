@@ -19,7 +19,7 @@ KEYPOINTER:
     HEIGHT: 64
     NF: 16
     NORM: 'batch'
-    LIM: [-1., 1., -1., 1.]
+    LIM: [-5., 5., -5., 5.]
     LR: 1.0e-3
     PIN: TRUE
     FREQ: 0.1

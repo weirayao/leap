@@ -28,8 +28,7 @@ class TCLMLP(nn.Module):
         )
 
         self.net_logits = nn.Sequential(
-            nn.Linear(input_dim, 1),
-            nn.LeakyReLU(0.2, True)
+            nn.Linear(z_dim, self.nclass),
         )
         self.weight_init()
 

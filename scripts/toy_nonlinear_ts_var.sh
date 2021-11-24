@@ -10,4 +10,4 @@ python train_nonlinear_ns.py \
 
 python train_nonlinear_ns.py \
     --exp toy_nonlinear_ts_var \
-    --seed 80
+    --seed 12

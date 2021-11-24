@@ -1,0 +1,45 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'kitti'
+TRANSFORM: null
+DT: 15
+
+MODEL: 'BetaVAE'
+# MODEL: 'PCL'
+# MODEL: 'iVAE' 
+# MODEL: 'BetaVAE' 
+# MODEL: 'SlowVAE' 
+# MODEL: 'FactorVAE'
+
+VAE:
+    GPU: [0]
+    CPU: 0
+    NC: 1
+    TRAIN_BS: 64
+    VAL_BS: 128
+    EPOCHS: 200
+    N_VAL_SAMPLES: 1280
+    LATENT_DIM: 10
+    ENC:
+        HIDDEN_DIM: 512
+    DEC:
+        HIDDEN_DIM: 512
+        DIST: 'bernoulli'  
+    PIN: TRUE
+
+FactorVAE:
+    GAMMA: 25
+    LR_VAE: 1.0e-3
+    LR_D: 5.0e-4
+
+BetaVAE:
+    BETA: 50
+    LR: 1.0e-3
+
+MCC:
+    FREQ: 0.5
+    CORR: 'Spearman' 

@@ -7,7 +7,7 @@ from numbers import Number
 from torch.nn import functional as F
 from torch import distributions as dist
 
-device='cuda:0'
+device='cuda:1'
 
 def weights_init(m):
     if isinstance(m, nn.Linear):

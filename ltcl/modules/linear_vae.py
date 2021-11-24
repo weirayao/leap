@@ -225,6 +225,7 @@ class AfflineVAECNN(pl.LightningModule):
         l1=0.0,
         lr=1e-4,
         diagonal=True,
+        identity=False,
         bias=False,
         use_warm_start=False,
         spline_pth=None,
@@ -243,6 +244,11 @@ class AfflineVAECNN(pl.LightningModule):
                                            dout=z_dim,
                                            num_blocks=lag,
                                            diagonal=diagonal)
+        if identity:
+            # SlowVAE setting: identity transitions
+            with torch.no_grad():
+                self.trans_func.d.fill_(1.)
+                # self.trans_func.d.requires_grad = False
         # Non-white noise: use learned bias to adjust
         if bias:
             self.b = nn.Parameter(0.001 * torch.randn(1, z_dim))
@@ -388,11 +394,8 @@ class AfflineVAECNN(pl.LightningModule):
         eps, _ = self.spline.inverse(e)
         return eps
 
-    def reconstruct(self):
-        return self.forward(batch)[0]
-
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
         # An scheduler is optional, but can help in flows to get the last bpd improvement
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 20, gamma=0.9)
         return [optimizer], [scheduler]

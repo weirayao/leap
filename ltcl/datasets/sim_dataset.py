@@ -151,16 +151,6 @@ class SimulationDatasetTSTwoSampleNS(Dataset):
     
     def __init__(self, directory, transition="linear_nongaussian_ts"):
         super().__init__()
-        assert transition in ["linear_nongaussian_ts", 
-                              "nonlinear_gaussian_ts", 
-                              "nonlinear_gaussian_sparse_ts", 
-                              "nonlinear_gau_cins",
-                              "nonlinear_nongaussian_ts", 
-                              "nonlinear_ns", 
-                              "nonlinear_gau_ns", 
-                              "nonlinear_gau_cins_sparse",
-                              "case1_dependency",
-                              "case2_nonstationary_causal"]
         self.path = os.path.join(directory, transition, "data.npz")
         self.npz = np.load(self.path)
         self.data = { }

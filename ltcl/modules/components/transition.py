@@ -46,6 +46,9 @@ class MBDTransitionPrior(nn.Module):
                                            dout = latent_size, 
                                            num_blocks = lags,
                                            diagonal = False)
+        self.bias = bias
+        if bias:
+            self.b = nn.Parameter(0.001 * torch.randn(1, latent_size))
     
     def forward(self, x, mask=None):
         # x: [BS, T, D] -> [BS, T-L, L+1, D]
@@ -58,7 +61,10 @@ class MBDTransitionPrior(nn.Module):
 
         x = x.reshape(-1, self.L+1, input_dim)
         xx, yy = x[:,-1:], x[:,:-1]
-        residuals = torch.sum(self.transition(yy), dim=1) - xx.squeeze()
+        if self.bias:
+            residuals = torch.sum(self.transition(yy), dim=1) + self.b - xx.squeeze()
+        else:
+            residuals = torch.sum(self.transition(yy), dim=1) - xx.squeeze()
         residuals = residuals.reshape(batch_size, -1, input_dim)
         # Dummy jacobian matrix (0) to represent identity mapping
         log_abs_det_jacobian = torch.zeros(batch_size, device=x.device)

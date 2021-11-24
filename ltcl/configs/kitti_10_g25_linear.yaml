@@ -2,8 +2,8 @@
 # Model Configurations  #
 #########################
 
-ROOT: '/data/datasets/logs/cmu_wyao/data'
-LOG: '/data/datasets/logs'
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
 DATASET: 'kitti'
 TRANSFORM: null
 DT: 15
@@ -19,24 +19,29 @@ SPLINE:
     BOUND: 5
     BINS: 8
     ORDER: 'linear'
-    PATH: '/home/cmu_wyao/spline_10.pth'
+    PATH: '/srv/data/ltcl/ckpts/spline_kitti.pth'
   
 VAE:
-    GPU: [2]
+    GPU: [0]
     CPU: 8
     TRAIN_BS: 64
-    VAL_BS: 1280
-    EPOCHS: 100
+    VAL_BS: 128
+    EPOCHS: 200
     N_VAL_SAMPLES: 1280
     LAG: 1
-    LR: 0.001
+    LENGTH: 1 # Future length
+    TRANS_PRIOR: 'L'
+    INFER_MODE: 'F'
+    LR: 1.0E-3
     BETA: 0.1
     GAMMA: 25
+    SIGMA: 1.0E-6
     L1: 0.1
     NC: 1
     LATENT_DIM: 10
-    DIAG: FALSE
+    CAUSAL_DIM: 10
     BIAS: FALSE # For non-white noise situations, enable bias
+    DIAG: FALSE
     ENC:
         HIDDEN_DIM: 512
     DEC:
@@ -46,5 +51,3 @@ VAE:
 MCC:
     FREQ: 0.5
     CORR: 'Spearman'
-
-SEED: 123

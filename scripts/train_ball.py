@@ -15,6 +15,9 @@ from ltcl.tools.utils import load_yaml
 from ltcl.datasets.physics_dataset import PhysicsDatasetTwoSample
 from ltcl.modules.components.base import Namespace
 import torchvision.transforms as transforms
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 import ipdb as pdb
 
 def main(args):
@@ -86,13 +89,24 @@ def main(args):
                            kp_pth=cfg['KEYPOINTER']['PATH'],
                            correlation=cfg['MCC']['CORR'])
 
+    checkpoint_callback = ModelCheckpoint(monitor='val_mcc', 
+                                          save_top_k=1, 
+                                          mode='max')
+
+    early_stop_callback = EarlyStopping(monitor="val_mcc", 
+                                        min_delta=0.00, 
+                                        patience=50, 
+                                        verbose=False, 
+                                        mode="max")
+                                        
     log_dir = os.path.join(cfg["LOG"], current_user, args.exp)
 
     trainer = pl.Trainer(default_root_dir=log_dir,
                          gpus=cfg['VAE']['GPU'], 
                          val_check_interval = cfg['MCC']['FREQ'],
                          max_epochs=cfg['VAE']['EPOCHS'],
-                         deterministic=True)
+                         deterministic=True,
+                         callbacks=[checkpoint_callback, early_stop_callback])
 
     # Train the model
     trainer.fit(model, train_loader, val_loader)

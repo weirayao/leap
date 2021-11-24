@@ -46,7 +46,8 @@ def main(args):
                             num_workers=cfg['PCL']['CPU'],
                             shuffle=False)
 
-    model = PCL(z_dim=cfg['PCL']['LATENT_DIM'], 
+    model = PCL(input_dim=cfg['PCL']['INPUT_DIM'],
+                z_dim=cfg['PCL']['LATENT_DIM'], 
                 lags=cfg['PCL']['LAG'], 
                 hidden_dims=cfg['PCL']['HIDDEN_DIM'], 
                 encoder_layers=cfg['PCL']['ENCODER_LAYER'], 

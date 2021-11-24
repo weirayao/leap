@@ -148,10 +148,10 @@ class SlowVAE(pl.LightningModule):
 
         _, mu, _ = self.net(x.view(-1, self.input_dim))
         zt_recon = mu.view(-1, self.z_dim).T.detach().cpu().numpy()
-        zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
-        mcc = compute_mcc(zt_recon, zt_true, self.correlation)
-
-        self.log("val_mcc", mcc) 
+        if "yt" in batch['s1']:
+            zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
+            mcc = compute_mcc(zt_recon, zt_true, self.correlation)
+            self.log("val_mcc", mcc) 
         self.log("val_vae_loss", vae_loss)
         return vae_loss
 

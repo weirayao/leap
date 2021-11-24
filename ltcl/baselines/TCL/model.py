@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from ..metrics.correlation import compute_mcc
 "TCL list"
 from .net import TCLMLP
+import ipdb as pdb
 
 # import tensorflow as tf
 # def tcl_loss(logits, labels):
@@ -24,7 +25,7 @@ from .net import TCLMLP
 def tcl_loss(logits, labels):
     batch_size = labels.size(0)
     assert batch_size != 0
-    recon_loss = F.binary_cross_entropy_with_logits(
+    recon_loss = F.cross_entropy(
         logits, labels, size_average=False).div(batch_size)
 
     return recon_loss
@@ -51,9 +52,9 @@ class TCL(pl.LightningModule):
         x = batch['s1']['xt']
         length = x.shape[1]
         x = x.reshape(-1, self.input_dim)
-        index = batch['s1']['ct'].repeat(length, 1)
+        index = batch['s1']['ct'].repeat_interleave(length).squeeze().to(torch.long)
         logits, feats = self.model(x)
-        vae_loss = -tcl_loss(logits, index)
+        vae_loss = tcl_loss(logits, index)
 
         self.log("train_loss", vae_loss)
         return vae_loss
@@ -62,15 +63,15 @@ class TCL(pl.LightningModule):
         x = batch['s1']['xt']
         length = x.shape[1]
         x = x.reshape(-1, self.input_dim)
-        index = batch['s1']['ct'].repeat(length, 1)
+        index = batch['s1']['ct'].repeat_interleave(length).squeeze().squeeze().to(torch.long)
         logits, feats = self.model(x)
-        vae_loss = -tcl_loss(logits, index)
+        vae_loss = tcl_loss(logits, index)
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = feats.view(-1, self.z_dim).T.detach().cpu().numpy()
-        zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
-        mcc = compute_mcc(zt_recon, zt_true, self.correlation)
-
-        self.log("val_mcc", mcc) 
+        if "yt" in batch['s1']:
+            zt_true = batch['s1']["yt"].view(-1, self.z_dim).T.detach().cpu().numpy()
+            mcc = compute_mcc(zt_recon, zt_true, self.correlation)
+            self.log("val_mcc", mcc) 
         self.log("val_loss", vae_loss)
         return vae_loss
 

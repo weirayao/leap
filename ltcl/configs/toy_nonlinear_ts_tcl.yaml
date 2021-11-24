@@ -15,7 +15,7 @@ MODEL: 'TCL'
 # MODEL: 'FactorVAE'
 
 VAE:
-    GPU: [0]
+    GPU: [1]
     CPU: 0
     TRAIN_BS: 32
     VAL_BS: 256
@@ -31,7 +31,7 @@ VAE:
 
 TCL:
     NCLASS: 20
-    LR: 1.0e-3
+    LR: 1.0e-4
 
 FactorVAE:
     GAMMA: 6.4

@@ -4,7 +4,7 @@
 
 ROOT: '/srv/data/ltcl/data'
 LOG: '/srv/data/ltcl/log'
-DATASET: 'nonlinear_gau_cins_sparse'
+DATASET: 'nonlinear_gau_cins'
 # DATASET: 'nonlinear_gau_ns'
 
 SPLINE:

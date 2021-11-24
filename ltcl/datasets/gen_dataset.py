@@ -747,14 +747,13 @@ def nonlinear_gau_ns():
             xt = xt_ns,
             ct = ct_ns)
 
-def nonlinear_gau_cins():
+def nonlinear_gau_cins(Nclass=20):
     """
     Crucial difference is latents are conditionally independent
     """
     lags = 2
     Nlayer = 3
     length = 4
-    Nclass = 20
     condList = []
     negSlope = 0.2
     latent_size = 8
@@ -762,7 +761,7 @@ def nonlinear_gau_cins():
     batch_size = 7500
     Niter4condThresh = 1e4
 
-    path = os.path.join(root_dir, "nonlinear_gau_cins")
+    path = os.path.join(root_dir, "nonlinear_gau_cins_%d"%Nclass)
     os.makedirs(path, exist_ok=True)
 
     for i in range(int(Niter4condThresh)):
@@ -783,7 +782,6 @@ def nonlinear_gau_cins():
         # generate causal matrix first:
         A = ortho_group.rvs(latent_size)  # generateUniformMat( Ncomp, condThresh )
         mixingList.append(A)
-
     yt = []; xt = []; ct = []
     yt_ns = []; xt_ns = []; ct_ns = []
     modMat = np.random.uniform(0, 1, (latent_size, Nclass))
@@ -1220,15 +1218,16 @@ def case2_nonstationary_causal():
 
 
 if __name__ == "__main__":
-    # linear_nonGaussian()
-    # linear_nonGaussian_ts()
-    # nonlinear_Gaussian_ts()
-    # nonlinear_nonGaussian_ts()
-    # nonlinear_ns()
-    # nonlinear_gau_ns()
-    # nonlinear_gau_cins()
-    # nonlinear_gau_cins_sparse()
-    # instan_temporal()
+    linear_nonGaussian()
+    linear_nonGaussian_ts()
+    nonlinear_Gaussian_ts()
+    nonlinear_nonGaussian_ts()
+    nonlinear_ns()
+    nonlinear_gau_ns()
     case1_dependency()
     case2_nonstationary_causal()
+    nonlinear_gau_cins_sparse()
+    instan_temporal()
+    for Nclass in  [1, 5, 10, 15, 20]:
+        nonlinear_gau_cins(Nclass)
 

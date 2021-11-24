@@ -51,10 +51,11 @@ def main(args):
         num_nonzero = int(n_rels * sparsity)
         choice = np.random.choice(n_rels, size=num_nonzero, replace=False)
         param_load[choice, 0] = 1
-        param_load[choice, 1] = np.random.rand(num_nonzero) * 10 + 20
+        param_load[choice, 1] = np.random.rand(num_nonzero) * 10
 
     datasets = {}
-    modMat = np.random.uniform(0, 1, (cfg['n_ball'], 2, cfg['n_class']))
+    # modMat = np.random.uniform(0, 1, (cfg['n_ball'], 2, cfg['n_class']))
+    modMat = np.ones((cfg['n_ball'], 2, cfg['n_class']))
     for phase in range(cfg['n_class']):
         datasets[phase] = PhysicsDataset(namespace, phase=str(phase), trans_to_tensor=trans_to_tensor)
         datasets[phase].gen_data(modVec=modMat[:,:,phase], param_load=param_load)

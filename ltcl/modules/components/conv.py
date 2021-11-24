@@ -12,8 +12,8 @@ class View(nn.Module):
     def forward(self, tensor):
         return tensor.view(self.size)
 
-class ConvDecoder(nn.Module):
-    """Convolutional decoder for beta-VAE"""
+class KiTTiConvDecoder(nn.Module):
+    """Convolutional decoder for KittiMask"""
     def __init__(self, z_dim=10, nc=3, hidden_dim=256):
         super().__init__()
         self.upsample = nn.Sequential(
@@ -37,8 +37,8 @@ class ConvDecoder(nn.Module):
     def forward(self, x):
         return self.upsample(x)
 
-class ConvEncoder(nn.Module):
-
+class KiTTiConvEncoder(nn.Module):
+    """Convolutional encoder for KittiMask"""
     def __init__(self, z_dim=10, nc=3, hidden_dim=256):
         super().__init__()
         self.downsample = nn.Sequential(
@@ -62,3 +62,65 @@ class ConvEncoder(nn.Module):
                                         )
     def forward(self, x):
         return self.downsample(x)
+
+class BallConvEncoder(nn.Module):
+    """Convolutional encoder for Ball Dataset"""
+    def __init__(self, z_dim=10, nc=3, nf=16):
+        super().__init__()
+        sequence = [
+            # input is (ni) x 64 x 64
+            nn.Conv2d(nc, nf, 7, 1, 3),
+            nn.BatchNorm2d(nf) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf),
+            nn.LeakyReLU(0.2, inplace=True),
+            # feat size (nf) x 64 x 64
+            nn.Conv2d(nf, nf, 5, 1, 2),
+            nn.BatchNorm2d(nf) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf),
+            nn.LeakyReLU(0.2, inplace=True),
+            # feat size (nf) x 64 x 64
+            nn.Conv2d(nf, nf * 2, 4, 2, 1),
+            nn.BatchNorm2d(nf * 2) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            # feat size (nf * 2) x 32 x 32
+            nn.Conv2d(nf * 2, nf * 2, 3, 1, 1),
+            nn.BatchNorm2d(nf * 2) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            # feat size (nf * 2) x 32 x 32
+            nn.Conv2d(nf * 2, nf * 4, 4, 2, 1),
+            nn.BatchNorm2d(nf * 4) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+            # feat size (nf * 4) x 16 x 16
+            View((-1, nf * 4 * 16 * 16)),
+            nn.Linear(nf * 4 * 16 * 16, z_dim)
+        ]
+
+        self.model = nn.Sequential(*sequence)
+
+    def forward(self, feat):
+        return self.model(feat)
+
+class BallConvDecoder(nn.Module):
+    """Convolutional decoder for Ball dataset"""
+    def __init__(self, z_dim=10, nc=3, nf=16):
+        super().__init__()
+        sequence = [
+            # input is (nf * 4) x 16 x 16
+            nn.Linear(z_dim, nf * 4 * 16 * 16),
+            View((-1, nf * 4,  16, 16)),
+            nn.ConvTranspose2d(nf * 4, nf * 4, 4, 2, 1),
+            nn.BatchNorm2d(nf * 4) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+            # input is (nf * 4) x 32 x 32
+            nn.Conv2d(nf * 4, nf * 2, 3, 1, 1),
+            nn.BatchNorm2d(nf * 2) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            # input is (nf * 4) x 32 x 32
+            nn.ConvTranspose2d(nf * 2, nf * 2, 4, 2, 1),
+            nn.BatchNorm2d(nf * 2) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            # input is (nf * 2) x 64 x 64
+        ]
+
+        self.model = nn.Sequential(*sequence)
+
+    def forward(self, feat):
+        return self.model(feat)

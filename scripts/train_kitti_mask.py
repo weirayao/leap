@@ -1,15 +1,20 @@
 import torch
+import random
 import argparse
+import numpy as np
+import ipdb as pdb
+import os, pwd, yaml
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
-
-from ltcl.modules.linear_vae import AfflineVAECNN
-from ltcl.datasets.kitti import KittiMasks
-from ltcl.tools.utils import load_yaml, setup_seed
-from pytorch_lightning.callbacks import Callback
+import warnings
+warnings.filterwarnings('ignore')
 
 from train_spline import pretrain_spline
-import os, pwd, yaml
+from ltcl.modules.srnn_cnn_kitti import SRNNConv
+from ltcl.tools.utils import load_yaml
+from ltcl.datasets.kitti import KittiMasksTwoSample
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 
 def main(args):
@@ -26,7 +31,7 @@ def main(args):
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
 
-    setup_seed(cfg['SEED'])
+    pl.seed_everything(args.seed)
     
     # Warm-start spline
     if cfg['SPLINE']['USE_WARM_START']:
@@ -35,9 +40,9 @@ def main(args):
             pretrain_spline(args.exp)
             print('Done!')
 
-    data = KittiMasks(path = os.path.join(cfg['ROOT'], cfg['DATASET']), 
-                      transform = cfg['TRANSFORM'],
-                      max_delta_t = cfg['DT'])
+    data = KittiMasksTwoSample(path = os.path.join(cfg['ROOT'], cfg['DATASET']), 
+                               transform = cfg['TRANSFORM'],
+                               max_delta_t = cfg['DT'])
 
     num_validation_samples = cfg['VAE']['N_VAL_SAMPLES']
 
@@ -58,34 +63,50 @@ def main(args):
                             num_workers=cfg['VAE']['CPU'],
                             shuffle=False)
 
-    model = AfflineVAECNN(nc=cfg['VAE']['NC'],
-                          z_dim=cfg['VAE']['LATENT_DIM'], 
-                          lag=cfg['VAE']['LAG'],
-                          hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
-                          bound=cfg['SPLINE']['BOUND'],
-                          count_bins=cfg['SPLINE']['BINS'],
-                          order=cfg['SPLINE']['ORDER'],
-                          beta=cfg['VAE']['BETA'],
-                          gamma=cfg['VAE']['GAMMA'],
-                          l1=cfg['VAE']['L1'],
-                          lr=cfg['VAE']['LR'],
-                          diagonal=cfg['VAE']['DIAG'],
-                          bias=cfg['VAE']['BIAS'],
-                          use_warm_start=cfg['SPLINE']['USE_WARM_START'],
-                          spline_pth=cfg['SPLINE']['PATH'],
-                          decoder_dist=cfg['VAE']['DEC']['DIST'],
-                          correlation=cfg['MCC']['CORR'])
+    model = SRNNConv(nc=cfg['VAE']['NC'],
+                     length=cfg['VAE']['LENGTH'],
+                     z_dim=cfg['VAE']['LATENT_DIM'], 
+                     z_dim_trans=cfg['VAE']['CAUSAL_DIM'], 
+                     lag=cfg['VAE']['LAG'],
+                     hidden_dim=cfg['VAE']['ENC']['HIDDEN_DIM'],
+                     trans_prior=cfg['VAE']['TRANS_PRIOR'],
+                     infer_mode=cfg['VAE']['INFER_MODE'],
+                     bound=cfg['SPLINE']['BOUND'],
+                     count_bins=cfg['SPLINE']['BINS'],
+                     order=cfg['SPLINE']['ORDER'],
+                     lr=cfg['VAE']['LR'],
+                     l1=cfg['VAE']['L1'],
+                     beta=cfg['VAE']['BETA'],
+                     gamma=cfg['VAE']['GAMMA'],
+                     sigma=cfg['VAE']['SIGMA'],
+                     bias=cfg['VAE']['BIAS'],
+                     use_warm_start=cfg['SPLINE']['USE_WARM_START'],
+                     spline_pth=cfg['SPLINE']['PATH'],
+                     decoder_dist=cfg['VAE']['DEC']['DIST'],
+                     correlation=cfg['MCC']['CORR'])
 
     log_dir = os.path.join(cfg["LOG"], current_user, args.exp)
 
+    checkpoint_callback = ModelCheckpoint(monitor='val_mcc', 
+                                          save_top_k=1, 
+                                          mode='max')
+
+    # early_stop_callback = EarlyStopping(monitor="val_mcc", 
+    #                                     min_delta=0.00, 
+    #                                     patience=50, 
+    #                                     verbose=False, 
+    #                                     mode="max")
+                                        
     trainer = pl.Trainer(default_root_dir=log_dir,
                          gpus=cfg['VAE']['GPU'], 
                          val_check_interval = cfg['MCC']['FREQ'],
-                         max_epochs=cfg['VAE']['EPOCHS'])
+                         max_epochs=cfg['VAE']['EPOCHS'],
+                         deterministic=True,
+                         callbacks=[checkpoint_callback])
 
     # Train the model
     trainer.fit(model, train_loader, val_loader)
-
+                         
 if __name__ == "__main__":
 
     argparser = argparse.ArgumentParser(description=__doc__)
@@ -94,6 +115,11 @@ if __name__ == "__main__":
         '--exp',
         type=str
     )
+    argparser.add_argument(
+        '-s',
+        '--seed',
+        type=int,
+        default=770
+    )
     args = argparser.parse_args()
-    torch.cuda.empty_cache()
     main(args)

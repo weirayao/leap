@@ -26,22 +26,22 @@ KEYPOINTER:
     HEIGHT: 64
     NF: 16
     NORM: 'batch'
-    LIM: [-5., 5., -5., 5.]
+    LIM: [-1., 1., -1., 1.]
 
 VAE:
     GPU: [1]
     CPU: 8
     TRAIN_BS: 32
-    VAL_BS: 128
-    EPOCHS: 300
-    N_VAL_SAMPLES: 1024
+    VAL_BS: 64
+    EPOCHS: 25
+    N_VAL_SAMPLES: 640
     NC: 3
     LAG: 2
-    LENGTH: 4
+    LENGTH: 2
     N_KPS: 5
-    NCLASS: 50
-    TRANS_PRIOR: 'NP'
-    LR: 5.0e-3
+    NCLASS: 1
+    TRANS_PRIOR: 'L'
+    LR: 5.0e-4
     BETA: 1.0e-3
     GAMMA: 1.0e-2
     SIGMA: 1.0e-7

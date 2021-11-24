@@ -15,7 +15,7 @@ MODEL: 'iVAE'
 # MODEL: 'FactorVAE'
 
 VAE:
-    GPU: [0]
+    GPU: [1]
     CPU: 0
     TRAIN_BS: 32
     VAL_BS: 256

@@ -7,15 +7,15 @@ env: 'Ball'
 data_names: ['attrs', 'states', 'actions', 'rels']
 n_ball: 5
 variable_rels: FALSE
-n_class: 50
+n_class: 1
 mode: 'rgb'
 # Number of episodes
-n_rollout: 10
+n_rollout: 500
 frame_offset: 1
 # Number of time steps in one rollout
 time_step: 500
-# Step size 0.02 s
-dt: 0.02
+# Step size 0.05 s
+dt: 0.05
 train_valid_ratio: 0.8
 # radius
 attr_dim: 1
@@ -38,6 +38,6 @@ width: 64
 scale_size: 64
 crop_size: 64
 
-lim: [-1., 1., -1., 1.]
+lim: [-5., 5., -5., 5.]
 # CPU
 num_workers: 5
