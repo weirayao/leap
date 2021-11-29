@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from sklearn import preprocessing
 from scipy.stats import ortho_group
 from sklearn.preprocessing import scale
-from ltcl.tools.utils import create_sparse_transitions, controlable_sparse_transitions
+from leap.tools.utils import create_sparse_transitions, controlable_sparse_transitions
 
 VALIDATION_RATIO = 0.2
 root_dir = '/srv/data/ltcl/data'

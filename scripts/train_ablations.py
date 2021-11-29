@@ -6,8 +6,8 @@ import ipdb as pdb
 import os, pwd, yaml
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
-from ltcl.tools.utils import load_yaml, setup_seed
-from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSample, SimulationDatasetTSTwoSampleNS
+from leap.tools.utils import load_yaml, setup_seed
+from leap.datasets.sim_dataset import SimulationDatasetTSTwoSample, SimulationDatasetTSTwoSampleNS
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 
@@ -22,7 +22,7 @@ def main(args):
     
     current_user = pwd.getpwuid(os.getuid()).pw_name
     script_dir = os.path.dirname(__file__)
-    rel_path = os.path.join('../ltcl/configs', 
+    rel_path = os.path.join('../leap/configs', 
                             '%s.yaml'%args.exp)
     abs_file_path = os.path.join(script_dir, rel_path)
     cfg = load_yaml(abs_file_path)
@@ -63,7 +63,7 @@ def main(args):
                             shuffle=False)
 
     if cfg['ABLATION'] == 'RI':
-        from ltcl.modules.ablate_ri import SRNNSynthetic
+        from leap.modules.ablate_ri import SRNNSynthetic
         model = SRNNSynthetic(input_dim=cfg['VAE']['INPUT_DIM'],
                               length=cfg['VAE']['LENGTH'],
                               z_dim=cfg['VAE']['LATENT_DIM'], 
@@ -84,7 +84,7 @@ def main(args):
                               correlation=cfg['MCC']['CORR'])
 
     elif cfg['ABLATION'] == 'TRANS':
-        from ltcl.modules.ablate_trans import SRNNSynthetic
+        from leap.modules.ablate_trans import SRNNSynthetic
         model = SRNNSynthetic(input_dim=cfg['VAE']['INPUT_DIM'],
                               length=cfg['VAE']['LENGTH'],
                               z_dim=cfg['VAE']['LATENT_DIM'], 
@@ -105,7 +105,7 @@ def main(args):
                               correlation=cfg['MCC']['CORR'])
 
     elif cfg['ABLATION'] == 'FLOW' and cfg['NS'] == False:
-        from ltcl.modules.srnn import SRNNSynthetic
+        from leap.modules.srnn import SRNNSynthetic
         model = SRNNSynthetic(input_dim=cfg['VAE']['INPUT_DIM'],
                                 length=cfg['VAE']['LENGTH'],
                                 z_dim=cfg['VAE']['LATENT_DIM'], 
@@ -126,7 +126,7 @@ def main(args):
                                 correlation=cfg['MCC']['CORR'])
 
     elif cfg['ABLATION'] == 'FLOW' and cfg['NS'] == True:
-        from ltcl.modules.srnn_ns import SRNNSyntheticNS
+        from leap.modules.srnn_ns import SRNNSyntheticNS
         model = SRNNSyntheticNS(input_dim=cfg['VAE']['INPUT_DIM'],
                                 length=cfg['VAE']['LENGTH'],
                                 z_dim=cfg['VAE']['LATENT_DIM'], 

@@ -10,10 +10,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from train_spline import pretrain_spline
-from ltcl.modules.srnn_cnn_ball import SRNNConv
-from ltcl.tools.utils import load_yaml
-from ltcl.datasets.physics_dataset import PhysicsDatasetTwoSample
-from ltcl.modules.components.base import Namespace
+from leap.modules.srnn_cnn_ball import SRNNConv
+from leap.tools.utils import load_yaml
+from leap.datasets.physics_dataset import PhysicsDatasetTwoSample
+from leap.modules.components.base import Namespace
 import torchvision.transforms as transforms
 import ipdb as pdb
 
@@ -23,14 +23,14 @@ def main(args):
     
     current_user = pwd.getpwuid(os.getuid()).pw_name
     script_dir = os.path.dirname(__file__)
-    rel_path = os.path.join('../ltcl/configs', 
+    rel_path = os.path.join('../leap/configs', 
                             '%s.yaml'%args.exp)
     abs_file_path = os.path.join(script_dir, rel_path)
     cfg = load_yaml(abs_file_path)
     print("######### Configuration #########")
     print(yaml.dump(cfg, default_flow_style=False))
     print("#################################")
-    data_cfg = load_yaml('../ltcl/configs/ball_5_s1.yaml')
+    data_cfg = load_yaml('../leap/configs/ball_5_s1.yaml')
     hparams = Namespace()
     for k in data_cfg:
         setattr(hparams, k, data_cfg[k])

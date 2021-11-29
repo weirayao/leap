@@ -159,36 +159,10 @@ class BetaVAE_Physics(nn.Module):
             nn.Conv2d(nf * 4, k, 1, 1)
         )
 
-        self.encoder.load_state_dict(torch.load('/srv/data/ltcl/ckpts/keypoint_predictor.pth'), strict=False)
-
-
         self.fc = nn.Sequential(View((-1, k * 16 * 16)),
                                 nn.Linear(k * 16 * 16, z_dim)
                                 )
 
-        # self.decoder = nn.Sequential(
-        #     nn.Linear(z_dim, height * width * 3),
-        #     nn.Tanh(),
-        #     View((-1, 3, height, width))
-        # )
-        # self.decoder = nn.Sequential(
-        #     nn.Linear(z_dim, hidden_dim),               # B, hidden_dim
-        #     View((-1, hidden_dim, 1, 1)),               # B, hidden_dim,  1,  1
-        #     nn.ReLU(True),
-        #     nn.ConvTranspose2d(hidden_dim, 64, 4),      # B,  64,  4,  4
-        #     nn.BatchNorm2d(64),
-        #     nn.ReLU(True),
-        #     nn.ConvTranspose2d(64, 64, 4, 2, 1), # B,  64,  8,  8
-        #     nn.BatchNorm2d(64),
-        #     nn.ReLU(True),
-        #     nn.ConvTranspose2d(64, 32, 4, 2, 1), # B,  32, 16, 16
-        #     nn.BatchNorm2d(32),
-        #     nn.ReLU(True),
-        #     nn.ConvTranspose2d(32, 32, 4, 2, 1), # B,  32, 32, 32
-        #     nn.BatchNorm2d(32),
-        #     nn.ReLU(True),
-        #     nn.ConvTranspose2d(32, 1, 4, 2, 1)  # B, nc, 64, 64
-        # )
         self.decoder = nn.Sequential(            
             nn.ConvTranspose2d(self.k, nf * 4, 4, 2, 1),
             nn.BatchNorm2d(nf * 4) if norm_layer == 'Batch' else nn.InstanceNorm2d(nf * 4),

@@ -7,10 +7,10 @@ import os, pwd, yaml
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
-from ltcl.tools.utils import load_yaml, setup_seed
+from leap.tools.utils import load_yaml, setup_seed
 from train_spline import pretrain_spline
-from ltcl.datasets.sim_dataset import SimulationDatasetTS, SimulationDatasetTSTwoSample
-from ltcl.modules.srnn import SRNNSynthetic
+from leap.datasets.sim_dataset import SimulationDatasetTS, SimulationDatasetTSTwoSample
+from leap.modules.srnn import SRNNSynthetic
 
 
 def main(args):
@@ -19,7 +19,7 @@ def main(args):
     
     current_user = pwd.getpwuid(os.getuid()).pw_name
     script_dir = os.path.dirname(__file__)
-    rel_path = os.path.join('../ltcl/configs', 
+    rel_path = os.path.join('../leap/configs', 
                             '%s.yaml'%args.exp)
     abs_file_path = os.path.join(script_dir, rel_path)
     cfg = load_yaml(abs_file_path)

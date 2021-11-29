@@ -2,10 +2,10 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import ltcl
+import leap
 import tqdm
-from ltcl.baselines.GCL.mix import MixingMLP
-from ltcl.modules.components.transforms import AfflineCoupling
+from leap.baselines.GCL.mix import MixingMLP
+from leap.modules.components.transforms import AfflineCoupling
 
 def ortho_init_weights(m):
     if type(m) == nn.Linear:

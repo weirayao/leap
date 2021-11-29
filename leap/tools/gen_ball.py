@@ -3,8 +3,8 @@ import torchvision.transforms as transforms
 
 import os
 import numpy as np
-from ltcl.datasets.physics_dataset import PhysicsDataset
-from ltcl.tools.utils import load_yaml
+from leap.datasets.physics_dataset import PhysicsDataset
+from leap.tools.utils import load_yaml
 import yaml
 import ipdb as pdb
 

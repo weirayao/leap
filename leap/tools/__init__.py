@@ -1,4 +1,4 @@
-"""Public API for `ltcl.tools`."""
+"""Public API for `leap.tools`."""
 
 from .torchutils import (
     create_alternating_binary_mask,

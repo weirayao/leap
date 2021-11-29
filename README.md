@@ -25,21 +25,21 @@ Experiment results are showcased in Jupyter Notebooks in `/tests` folder. Each n
   <img align="middle" src="https://github.com/weirayao/leap/blob/main/imgs/np_syn.png" width="600"/>
 </p>
 
-Run the scripts in `/ltcl/scripts` to generate results for experiment.
+Run the scripts in `/leap/scripts` to generate results for experiment.
 
 Further details are documented within the code.
 
 ### Requirements
 To install it, create a conda environment with `Python>=3.7` and follow the instructions below. Note, that the current implementation of LEAP requires a GPU.
 ```
-conda create -n ltcl python=3.7
-cd ltcl
+conda create -n leap python=3.7
+cd leap
 pip install -e .
 ```
 
 ### Datasets
 
-- Synthetic data: `python ltcl/datasets/gen_dataset.py `
+- Synthetic data: `python leap/datasets/gen_dataset.py `
 - KittiMask: https://github.com/bethgelab/slow_disentanglement
 - Mass-Spring system: https://yunzhuli.github.io/V-CDN/
 - CMU Mocap databse: http://mocap.cs.cmu.edu/

@@ -4,8 +4,8 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from ltcl.datasets.sim_dataset import SimulationDataset
-from ltcl.modules.lvae_nonlinear import AfflineVAESynthetic
+from leap.datasets.sim_dataset import SimulationDataset
+from leap.modules.lvae_nonlinear import AfflineVAESynthetic
 
 
 def main(args):

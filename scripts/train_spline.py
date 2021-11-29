@@ -3,11 +3,11 @@ import os
 import argparse
 import torch
 import torch.nn.functional as F
-from ltcl.tools.utils import load_yaml
-from ltcl.modules.components.transforms import ComponentWiseSpline
+from leap.tools.utils import load_yaml
+from leap.modules.components.transforms import ComponentWiseSpline
 
 def pretrain_spline(cfg_name):
-    cfg = load_yaml(os.path.join('../ltcl/configs', 
+    cfg = load_yaml(os.path.join('../leap/configs', 
                                  '%s.yaml'%cfg_name))
     batch_size = cfg['SPLINE']['BS']
     latent_size = cfg['SPLINE']['LATENT_DIM']

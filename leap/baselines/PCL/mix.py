@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from ltcl.modules.components.keypoint import SpatialSoftmax
+from leap.modules.components.keypoint import SpatialSoftmax
 
 class View(nn.Module):
     def __init__(self, size):

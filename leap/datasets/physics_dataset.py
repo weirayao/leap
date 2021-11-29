@@ -22,12 +22,12 @@ from tqdm import tqdm
 from torch.autograd import Variable
 from torch.utils.data import Dataset
 
-from ltcl.tools.physics_engine import BallEngine
+from leap.tools.physics_engine import BallEngine
 
-from ltcl.tools.utils import rand_float, rand_int
-from ltcl.tools.utils import init_stat, combine_stat, load_data, store_data
-from ltcl.tools.utils import resize, crop
-from ltcl.tools.utils import adjust_brightness, adjust_saturation, adjust_contrast, adjust_hue
+from leap.tools.utils import rand_float, rand_int
+from leap.tools.utils import init_stat, combine_stat, load_data, store_data
+from leap.tools.utils import resize, crop
+from leap.tools.utils import adjust_brightness, adjust_saturation, adjust_contrast, adjust_hue
 import random
 import ipdb as pdb
 

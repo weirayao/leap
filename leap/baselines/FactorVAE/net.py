@@ -1,19 +1,10 @@
 """model.py"""
 
-import json
 import torch
-import numpy as np
 import torch.nn as nn
 import torch.nn.init as init
-from torch.autograd import Variable
-from ltcl.modules.components.keypoint import SpatialSoftmax
-import ipdb as pdb
-
-def reparametrize(mu, logvar):
-    std = logvar.div(2).exp()
-    eps = Variable(std.data.new(std.size()).normal_())
-    return mu + std*eps
-
+import numpy as np
+from leap.modules.components.keypoint import SpatialSoftmax
 
 class View(nn.Module):
     def __init__(self, size):
@@ -22,16 +13,47 @@ class View(nn.Module):
 
     def forward(self, tensor):
         return tensor.view(self.size)
+        
+class Discriminator(nn.Module):
+    def __init__(self, z_dim, hidden_dim):
+        super(Discriminator, self).__init__()
+        self.z_dim = z_dim
+        self.hidden_dim = hidden_dim
+        self.net = nn.Sequential(
+            nn.Linear(z_dim, hidden_dim),
+            nn.LeakyReLU(0.2, True),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(0.2, True),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(0.2, True),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(0.2, True),
+            nn.Linear(hidden_dim, 2),
+        )
+        self.weight_init()
+
+    def weight_init(self, mode='normal'):
+        if mode == 'kaiming':
+            initializer = kaiming_init
+        elif mode == 'normal':
+            initializer = normal_init
+
+        for block in self._modules:
+            for m in self._modules[block]:
+                initializer(m)
+
+    def forward(self, z):
+        return self.net(z).squeeze()
 
 
-class BetaVAEMLP(nn.Module):
+class FactorVAEMLP(nn.Module):
     """Encoder and Decoder architecture for 2D Shapes data."""
     def __init__(self, input_dim=8, z_dim=8, hidden_dim=128):
-        super(BetaVAEMLP, self).__init__()
+        super(FactorVAEMLP, self).__init__()
         self.z_dim = z_dim
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
-        self.encoder = nn.Sequential(
+        self.encode = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.LeakyReLU(0.2, True),
             nn.Linear(hidden_dim, hidden_dim),
@@ -43,7 +65,7 @@ class BetaVAEMLP(nn.Module):
             nn.Linear(hidden_dim, 2*z_dim),
             nn.LeakyReLU(0.2, True)
         )
-        self.decoder = nn.Sequential(
+        self.decode = nn.Sequential(
             nn.LeakyReLU(0.2, True),
             nn.Linear(z_dim, hidden_dim),
             nn.LeakyReLU(0.2, True),
@@ -51,37 +73,41 @@ class BetaVAEMLP(nn.Module):
         )
         self.weight_init()
 
-    def weight_init(self):
+    def weight_init(self, mode='normal'):
+        if mode == 'kaiming':
+            initializer = kaiming_init
+        elif mode == 'normal':
+            initializer = normal_init
+
         for block in self._modules:
             for m in self._modules[block]:
-                kaiming_init(m)
+                initializer(m)
 
-    def forward(self, x, return_z=False):
-        distributions = self._encode(x)
-        mu = distributions[:, :self.z_dim]
-        logvar = distributions[:, self.z_dim:]
-        z = reparametrize(mu, logvar)
-        x_recon = self._decode(z)
+    def reparametrize(self, mu, logvar):
+        std = logvar.mul(0.5).exp_()
+        eps = std.data.new(std.size()).normal_()
+        return eps.mul(std).add_(mu)
 
-        if return_z:
-            return x_recon, mu, logvar, z
+    def forward(self, x, no_dec=False):
+        stats = self.encode(x)
+        mu = stats[:, :self.z_dim]
+        logvar = stats[:, self.z_dim:]
+        z = self.reparametrize(mu, logvar)
+
+        if no_dec:
+            return z.squeeze()
         else:
-            return x_recon, mu, logvar
+            x_recon = self.decode(z).view(x.size())
+            return x_recon, mu, logvar, z.squeeze()
 
-    def _encode(self, x):
-        return self.encoder(x)
-    
-    def _decode(self, z):
-        return self.decoder(z)
-
-class BetaVAE_CNN(nn.Module):
-    """Model proposed in original beta-VAE paper(Higgins et al, ICLR, 2017)."""
-
+class FactorVAECNN(nn.Module):
+    """Encoder and Decoder architecture for KittMask data."""
     def __init__(self, z_dim=10, nc=3, hidden_dim=256):
-        super(BetaVAE_CNN, self).__init__()
+        super(FactorVAECNN, self).__init__()
         self.z_dim = z_dim
+        self.hidden_dim = hidden_dim
         self.nc = nc
-        self.encoder = nn.Sequential(
+        self.encode = nn.Sequential(
             nn.Conv2d(nc, 32, 4, 2, 1),          # B,  32, 32, 32
             nn.BatchNorm2d(32),
             nn.ReLU(True),
@@ -100,7 +126,8 @@ class BetaVAE_CNN(nn.Module):
             View((-1, hidden_dim*1*1)),                 # B, hidden_dim
             nn.Linear(hidden_dim, z_dim*2),             # B, z_dim*2
         )
-        self.decoder = nn.Sequential(
+
+        self.decode = nn.Sequential(
             nn.Linear(z_dim, hidden_dim),               # B, hidden_dim
             View((-1, hidden_dim, 1, 1)),               # B, hidden_dim,  1,  1
             nn.ReLU(True),
@@ -121,30 +148,34 @@ class BetaVAE_CNN(nn.Module):
 
         self.weight_init()
 
-    def weight_init(self):
+    def weight_init(self, mode='kaiming'):
+        if mode == 'kaiming':
+            initializer = kaiming_init
+        elif mode == 'normal':
+            initializer = normal_init
+
         for block in self._modules:
             for m in self._modules[block]:
-                kaiming_init(m)
+                initializer(m)
 
-    def forward(self, x, return_z=False):
-        distributions = self._encode(x)
-        mu = distributions[:, :self.z_dim]
-        logvar = distributions[:, self.z_dim:]
-        z = reparametrize(mu, logvar)
-        x_recon = self._decode(z)
+    def reparametrize(self, mu, logvar):
+        std = logvar.mul(0.5).exp_()
+        eps = std.data.new(std.size()).normal_()
+        return eps.mul(std).add_(mu)
 
-        if return_z:
-            return x_recon, mu, logvar, z
+    def forward(self, x, no_dec=False):
+        stats = self.encode(x)
+        mu = stats[:, :self.z_dim]
+        logvar = stats[:, self.z_dim:]
+        z = self.reparametrize(mu, logvar)
+
+        if no_dec:
+            return z.squeeze()
         else:
-            return x_recon, mu, logvar
+            x_recon = self.decode(z).view(x.size())
+            return x_recon, mu, logvar, z.squeeze()
 
-    def _encode(self, x):
-        return self.encoder(x)
-
-    def _decode(self, z):
-        return self.decoder(z)
-
-class BetaVAE_KP(nn.Module):
+class FactorVAEKP(nn.Module):
     """Visual Encoder/Decoder for Ball dataset."""
     def __init__(self, k=5, nc=3, nf=16, norm_layer='Batch'):
         super().__init__()
@@ -212,17 +243,22 @@ class BetaVAE_KP(nn.Module):
             # input is (nf * 2) x 64 x 64
             nn.Conv2d(nf, 3, 7, 1, 3))
 
-    def forward(self, x, return_z=True):
+    def forward(self, x, no_dec=False):
         distributions = self._encode(x)
         mu = distributions[:, :self.z_dim]
         logvar = distributions[:, self.z_dim:]
-        z = reparametrize(mu, logvar)
+        z = self.reparametrize(mu, logvar)
         x_recon = self._decode(z)
 
-        if return_z:
-            return x_recon, mu, logvar, z
+        if no_dec:
+            return z.squeeze()
         else:
-            return x_recon, mu, logvar
+            return x_recon, mu, logvar, z.squeeze()
+
+    def reparametrize(self, mu, logvar):
+        std = logvar.mul(0.5).exp_()
+        eps = std.data.new(std.size()).normal_()
+        return eps.mul(std).add_(mu)
 
     def keypoint_to_heatmap(self, keypoint, inv_std=10.):
         # keypoint: B x n_kp x 2
@@ -258,7 +294,7 @@ class BetaVAE_KP(nn.Module):
 
 def kaiming_init(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):
-        init.kaiming_normal(m.weight)
+        init.kaiming_normal_(m.weight)
         if m.bias is not None:
             m.bias.data.fill_(0)
     elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
@@ -267,12 +303,12 @@ def kaiming_init(m):
             m.bias.data.fill_(0)
 
 
-def normal_init(m, mean, std):
+def normal_init(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):
-        m.weight.data.normal_(mean, std)
-        if m.bias.data is not None:
-            m.bias.data.zero_()
-    elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
+        init.normal_(m.weight, 0, 0.02)
+        if m.bias is not None:
+            m.bias.data.fill_(0)
+    elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
         m.weight.data.fill_(1)
-        if m.bias.data is not None:
-            m.bias.data.zero_()
+        if m.bias is not None:
+            m.bias.data.fill_(0)

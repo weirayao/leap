@@ -1,6 +1,6 @@
-"""Public API for `ltcl.modules.components`."""
+"""Public API for `leap.modules.components`."""
 
-from ltcl.modules.components.base import (InverseNotAvailable,
+from leap.modules.components.base import (InverseNotAvailable,
                                           InputOutsideDomain,
                                           Transform,
                                           CompositeTransform,

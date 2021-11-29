@@ -2,10 +2,10 @@
 import torch
 import torch.nn as nn
 from torch.autograd.functional import jacobian
-from ltcl.modules.components.mlp import NLayerLeakyMLP
-from ltcl.modules.components.graph import PropNet
-from ltcl.modules.components.transforms import AfflineCoupling
-from ltcl.modules.components.base import GroupLinearLayer
+from leap.modules.components.mlp import NLayerLeakyMLP
+from leap.modules.components.graph import PropNet
+from leap.modules.components.transforms import AfflineCoupling
+from leap.modules.components.base import GroupLinearLayer
 import ipdb as pdb
 
 class LinearTransitionPrior(nn.Module):

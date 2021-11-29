@@ -6,7 +6,7 @@ import matplotlib as mpl
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle, Circle, Polygon
 
-from ltcl.tools.utils import rand_float, rand_int, calc_dis, norm
+from leap.tools.utils import rand_float, rand_int, calc_dis, norm
 
 import ipdb as pdb
 

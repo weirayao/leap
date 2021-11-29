@@ -10,9 +10,9 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from train_spline import pretrain_spline
-from ltcl.modules.srnn_ns import SRNNSyntheticNS
-from ltcl.tools.utils import load_yaml
-from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSampleNS
+from leap.modules.srnn_ns import SRNNSyntheticNS
+from leap.tools.utils import load_yaml
+from leap.datasets.sim_dataset import SimulationDatasetTSTwoSampleNS
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 
@@ -22,7 +22,7 @@ def main(args):
     
     current_user = pwd.getpwuid(os.getuid()).pw_name
     script_dir = os.path.dirname(__file__)
-    rel_path = os.path.join('../ltcl/configs', 
+    rel_path = os.path.join('../leap/configs', 
                             '%s.yaml'%args.exp)
     abs_file_path = os.path.join(script_dir, rel_path)
     cfg = load_yaml(abs_file_path)

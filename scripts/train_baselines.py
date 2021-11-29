@@ -8,19 +8,19 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
 "utils file (SAME)"
-from ltcl.tools.utils import load_yaml
+from leap.tools.utils import load_yaml
 # Stationary: 
-from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSample 
+from leap.datasets.sim_dataset import SimulationDatasetTSTwoSample 
 # Nonstationary: 
-from ltcl.datasets.sim_dataset import SimulationDatasetTSTwoSampleNS
+from leap.datasets.sim_dataset import SimulationDatasetTSTwoSampleNS
 
 "baseline list"
-from ltcl.baselines.TCL.model import TCL
-# from ltcl.baselines.PCL.model import PCL # deprecated
-from ltcl.baselines.iVAE.model import iVAE
-from ltcl.baselines.BetaVAE.model import BetaVAE
-from ltcl.baselines.SlowVAE.model import SlowVAE
-from ltcl.baselines.FactorVAE.model import FactorVAE
+from leap.baselines.TCL.model import TCL
+# from leap.baselines.PCL.model import PCL # deprecated
+from leap.baselines.iVAE.model import iVAE
+from leap.baselines.BetaVAE.model import BetaVAE
+from leap.baselines.SlowVAE.model import SlowVAE
+from leap.baselines.FactorVAE.model import FactorVAE
 
 def main(args):
 
@@ -28,7 +28,7 @@ def main(args):
     
     current_user = pwd.getpwuid(os.getuid()).pw_name
     script_dir = os.path.dirname(__file__)
-    rel_path = os.path.join('../ltcl/configs', '%s.yaml'%args.exp)
+    rel_path = os.path.join('../leap/configs', '%s.yaml'%args.exp)
     abs_file_path = os.path.join(script_dir, rel_path)
     cfg = load_yaml(abs_file_path)
     print("######### Configuration #########")

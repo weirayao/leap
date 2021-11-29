@@ -9,14 +9,14 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
   long_description = f.read()
 
 setup(
-    name="ltcl", # Replace with your own username
+    name="leap", # Replace with your own username
     version="0.0.1",
     author="Weiran Yao, Yuewen Sun, Alex Ho, Kun Zhang",
-    author_email="ltcl@googlegroups.com",
-    description="The ltcl is a tool for discovering latent temporal causal factors",
+    author_email="leap@googlegroups.com",
+    description="The leap is a tool for discovering latent temporal causal factors",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/weirayao/ltcl",
+    url="https://github.com/weirayao/leap",
     project_urls={
         "Bug Tracker": "https://github.com/pypa/sampleproject/issues",
     },

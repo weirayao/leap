@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.distributions as D
 from torch.nn import functional as F, init
-from ltcl.modules import components
-from ltcl.modules.components.splines import _monotonic_rational_spline
-from ltcl.modules.components.linear import LULinear
+from leap.modules import components
+from leap.modules.components.splines import _monotonic_rational_spline
+from leap.modules.components.linear import LULinear
 
 from typing import (Tuple,
                     Union,

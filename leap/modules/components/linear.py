@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F, init
 
-from ltcl.modules import components
+from leap.modules import components
 from . import utils
 
 class LinearCache(object):
