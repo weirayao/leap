@@ -3,6 +3,30 @@
 ### Overview
 In this project, we consider both a nonparametric, nonstationary setting and a parametric setting for the latent processes and propose two provable conditions under which temporally causal latent processes can be identified from their nonlinear mixtures. We propose LEAP, a theoretically-grounded architecture that extends Variational Autoencoders (VAEs) by enforcing our conditions through proper constraints in causal process prior. Experimental result on various data sets demonstrate that temporally causal latent processes are reliably identified from observed variables under different dependency structures and that our approach considerably outperforms baselines that do not leverage history or nonstationarity information. This is one of the first works that successfully recover time-delayed latent processes from nonlinear mixtures without using sparsity or minimality assumptions. 
 
+**[Learning Temporally Causal Latent Processes from General Temporal Data](https://arxiv.org/abs/2110.05428)**
+<br />
+[Weiran Yao](https://weirayao.github.io/)\*,
+[Yuewen Sun](https://scholar.google.com/citations?user=LboR1toAAAAJ&hl=en)\*,
+[Alex Ho](https://github.com/alexander-j-ho), and
+[Kun Zhang](https://www.andrew.cmu.edu/user/kunz1/)
+<br />
+(\*: indicates equal contribution.)
+<br />
+Submitted to International Conference on Learning Representations (ICLR) 2022
+<br />
+[[Paper]](https://arxiv.org/abs/2110.05428)
+[[Project Page]](https://weirayao.github.io/)
+
+```
+@article{yao2021learning,
+  title={Learning Temporally Causal Latent Processes from General Temporal Data},
+  author={Yao, Weiran and Sun, Yuewen and Ho, Alex and Sun, Changyin and Zhang, Kun},
+  journal={arXiv preprint arXiv:2110.05428},
+  year={2021}
+}
+```
+
+
 **Our Approach:** we leverage **nonstationarity** in process noise or **functional and distributional forms** of temporal statistics to identify temporally causal latent processes from observation.
 <p align="center">
   <img align="middle" src="https://github.com/weirayao/leap/blob/main/imgs/motivation.jpg" alt="relational inference" width="800"/>
