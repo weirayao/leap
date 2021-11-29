@@ -1,0 +1,66 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/home/yuewen/data/datasets/logs/cmu_wyao/data'
+LOG: '/home/yuewen/data/datasets/logs'
+DATASET: 'nonlinear_gau_cins'
+
+NS: True
+MODEL: 'TCL'
+# MODEL: 'PCL'
+# MODEL: 'iVAE' 
+# MODEL: 'BetaVAE' 
+# MODEL: 'SlowVAE' 
+# MODEL: 'FactorVAE'
+
+VAE:
+    GPU: [0]
+    CPU: 0
+    TRAIN_BS: 32
+    VAL_BS: 64
+    EPOCHS: 1
+    N_VAL_SAMPLES: 1024
+    INPUT_DIM: 8
+    LATENT_DIM: 8
+    ENC:
+        HIDDEN_DIM: 128
+    DEC:
+        HIDDEN_DIM: 128   
+    PIN: TRUE
+
+TCL:
+    NCLASS: 20
+    LR: 1.0e-3
+
+FactorVAE:
+    GAMMA: 6.4
+    LR_VAE: 1.0e-4
+    beta1_VAE: 0.9
+    beta2_VAE: 0.999
+    LR_D: 1.0e-4
+    beta1_D: 0.5
+    beta2_D: 0.9
+
+iVAE:
+    LR: 1.0e-3
+
+BetaVAE:
+    BETA: 8
+    GAMMA: 0
+    RATE_PRIOR: 1
+    beta1_VAE: 0.9
+    beta2_VAE: 0.999
+    LR: 1.0e-4
+
+SlowVAE:
+    BETA: 1
+    GAMMA: 10
+    RATE_PRIOR: 6
+    beta1_VAE: 0.9
+    beta2_VAE: 0.999
+    LR: 1.0e-4
+
+MCC:
+    FREQ: 0.1
+    CORR: 'Pearson'

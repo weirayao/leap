@@ -1,0 +1,77 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'mocap_point_cloud'
+
+NS: FALSE
+MODEL: 'BetaVAE'
+# MODEL: 'PCL'
+# MODEL: 'iVAE' 
+# MODEL: 'BetaVAE' 
+# MODEL: 'SlowVAE' 
+# MODEL: 'FactorVAE'
+
+VAE:
+    GPU: [1]
+    CPU: 8
+    TRAIN_BS: 32
+    VAL_BS: 128
+    EPOCHS: 200
+    N_VAL_SAMPLES: 1280
+    LAG: 2
+    LENGTH: 4
+    NCLASS: 12
+    TRANS_PRIOR: 'NP'
+    LR: 1.0e-3
+    BETA: 1.0e-1
+    GAMMA: 1
+    SIGMA: 1.0e-6
+    L1: 1.0e-3
+    INPUT_DIM: 62
+    LATENT_DIM: 8
+    BIAS: FALSE
+    ENC:
+        HIDDEN_DIM: 128
+    DEC:
+        HIDDEN_DIM: 128
+        DIST: 'gaussian'
+    PIN: TRUE
+
+TCL:
+    NCLASS: 12
+    LR: 1.0e-4
+
+FactorVAE:
+    GAMMA: 0.1
+    LR_VAE: 1.0e-3
+    beta1_VAE: 0.9
+    beta2_VAE: 0.999
+    LR_D: 5.0e-4
+    beta1_D: 0.5
+    beta2_D: 0.9
+
+iVAE:
+    LR: 5.0e-4
+
+BetaVAE:
+    BETA: 1
+    GAMMA: 0
+    RATE_PRIOR: 1
+    beta1_VAE: 0.9
+    beta2_VAE: 0.999
+    LR: 5.0e-4
+
+SlowVAE:
+    BETA: 0.1
+    GAMMA: 1
+    RATE_PRIOR: 6
+    beta1_VAE: 0.9
+    beta2_VAE: 0.999
+    LR: 5.0e-4
+
+MCC:
+    FREQ: 1.0
+    CORR: 'Pearson'

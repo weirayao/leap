@@ -1,0 +1,25 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'physics_ball_5_s1'
+DATA_CFG: '../ltcl/configs/ball_5_s1.yaml'
+
+KEYPOINTER:
+    GPU: [0]
+    CPU: 8
+    TRAIN_BS: 32
+    VAL_BS: 128
+    EPOCHS: 10
+    N_VAL_SAMPLES: 1024
+    N_KPS: 5
+    WIDTH: 64
+    HEIGHT: 64
+    NF: 16
+    NORM: 'batch'
+    LIM: [-5., 5., -5., 5.]
+    LR: 1.0e-3
+    PIN: TRUE
+    FREQ: 0.1

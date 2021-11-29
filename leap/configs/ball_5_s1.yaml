@@ -1,0 +1,43 @@
+#########################
+# Dataset Configurations  #
+########################
+root_dir: '/srv/data/ltcl/data'
+dataf: 'physics_ball_5_s1'
+env: 'Ball'
+data_names: ['attrs', 'states', 'actions', 'rels']
+n_ball: 5
+variable_rels: FALSE
+n_class: 1
+mode: 'rgb'
+# Number of episodes
+n_rollout: 500
+frame_offset: 1
+# Number of time steps in one rollout
+time_step: 500
+# Step size 0.05 s
+dt: 0.05
+train_valid_ratio: 0.8
+# radius
+attr_dim: 1
+# x, y, xdot, ydot
+state_dim: 4
+# ddx, ddy
+action_dim: 2
+# none, spring, rod
+relation_dim: 3
+
+# size of the latent causal graph
+node_attr_dim: 0
+edge_attr_dim: 1
+edge_type_num: 3
+
+height_raw: 110
+width_raw: 110
+height: 64
+width: 64
+scale_size: 64
+crop_size: 64
+
+lim: [-5., 5., -5., 5.]
+# CPU
+num_workers: 5

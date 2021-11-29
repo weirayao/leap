@@ -1,0 +1,61 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'physics_ball_5_s1'
+
+MODEL: 'BetaVAE'
+# MODEL: 'PCL'
+# MODEL: 'iVAE' 
+# MODEL: 'BetaVAE' 
+# MODEL: 'SlowVAE' 
+# MODEL: 'FactorVAE'
+
+SPLINE:
+    USE_WARM_START: TRUE
+    TYPE: 'laplacian'
+    STEPS: 5000
+    LR: 0.001
+    CUDA: FALSE
+    BS: 64
+    LATENT_DIM: 10
+    BOUND: 5
+    BINS: 8
+    ORDER: 'linear'
+    PATH: '/srv/data/ltcl/ckpts/spline_mbi_5_ball.pth'
+
+VAE:
+    GPU: [0]
+    CPU: 8
+    TRAIN_BS: 32
+    VAL_BS: 64
+    EPOCHS: 1
+    N_VAL_SAMPLES: 640
+    NC: 3
+    K: 5
+    LAG: 2
+    LENGTH: 2
+    TRANS_PRIOR: 'L'
+    BIAS: TRUE
+    LR: 5.0e-4
+    ENC:
+        NF: 16
+    DEC:
+        HIDDEN_DIM: 1024
+        DIST: 'gaussian'
+    PIN: TRUE
+
+FactorVAE:
+    GAMMA: 25
+    LR_VAE: 1.0e-3
+    LR_D: 5.0e-4
+
+BetaVAE:
+    BETA: 25
+    LR: 1.0e-3
+
+MCC:
+    FREQ: 0.01
+    CORR: 'Pearson' # 'Spearman'

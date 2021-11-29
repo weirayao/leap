@@ -1,0 +1,28 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'kitti'
+TRANSFORM: null
+DT: 15
+
+PCL:
+    GPU: [0]
+    CPU: 8
+    NC: 1
+    LAG: 1
+    LATENT_DIM: 10
+    TRAIN_BS: 64
+    VAL_BS: 128
+    N_VAL_SAMPLES: 1280
+    EPOCHS: 200
+    LR: 5.0E-4
+    HIDDEN_DIM: 512
+    SCORE_LAYER: 4
+    PIN: TRUE
+
+MCC:
+    FREQ: 0.5
+    CORR: 'Spearman' # 'Spearman' # 

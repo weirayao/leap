@@ -1,0 +1,50 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/home/yuewen/data/datasets/logs/cmu_wyao/data'
+LOG: '/home/yuewen/data/datasets/logs'
+DATASET: 'nonlinear_gaussian_ts'
+
+SPLINE:
+    USE_WARM_START: TRUE
+    TYPE: 'gaussian'
+    STEPS: 5000
+    LR: 0.001
+    CUDA: FALSE
+    BS: 64
+    LATENT_DIM: 8
+    BOUND: 5
+    BINS: 8
+    ORDER: 'linear'
+    PATH: '/home/yuewen/data/datasets/logs/spline_nonlinear_gaussian_ts.pth'
+  
+VAE:
+    GPU: [1]
+    CPU: 8
+    TRAIN_BS: 32
+    VAL_BS: 64
+    EPOCHS: 300
+    N_VAL_SAMPLES: 1024
+    LAG: 2
+    LENGTH: 4
+    TRANS_PRIOR: 'PNL'
+    LR: 4.0e-4
+    BETA: 2.0e-3
+    GAMMA: 2.0e-2
+    SIGMA: 1.0e-6
+    INPUT_DIM: 8
+    LATENT_DIM: 8
+    BIAS: FALSE
+    ENC:
+        HIDDEN_DIM: 128
+    DEC:
+        HIDDEN_DIM: 128
+        DIST: 'gaussian'
+    PIN: TRUE
+
+MCC:
+    FREQ: 0.1
+    CORR: 'Pearson' # 'Spearman'
+
+SEED: 770
