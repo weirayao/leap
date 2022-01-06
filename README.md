@@ -7,7 +7,8 @@ In this project, we consider both a nonparametric, nonstationary setting and a p
 <br />
 [Weiran Yao](https://weirayao.github.io/)\*,
 [Yuewen Sun](https://scholar.google.com/citations?user=LboR1toAAAAJ&hl=en)\*,
-[Alex Ho](https://github.com/alexander-j-ho), and
+[Alex Ho](https://github.com/alexander-j-ho), 
+[Changyin Sun](https://dblp.org/pid/64/221.html),and
 [Kun Zhang](https://www.andrew.cmu.edu/user/kunz1/)
 <br />
 (\*: indicates equal contribution.)
