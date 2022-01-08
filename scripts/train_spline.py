@@ -11,7 +11,6 @@ def pretrain_spline(cfg_name):
                                  '%s.yaml'%cfg_name))
     batch_size = cfg['SPLINE']['BS']
     latent_size = cfg['SPLINE']['LATENT_DIM']
-    bound = cfg['VAE']['LATENT_DIM']
     use_cuda = cfg['SPLINE']['CUDA']
     device = torch.device("cuda:0" if use_cuda else "cpu")
     steps = cfg['SPLINE']['STEPS']

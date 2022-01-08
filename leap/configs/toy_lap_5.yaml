@@ -1,0 +1,46 @@
+#########################
+# Model Configurations  #
+#########################
+
+ROOT: '/srv/data/ltcl/data'
+LOG: '/srv/data/ltcl/log'
+DATASET: 'da_lap_5'
+
+SPLINE:
+    USE_WARM_START: TRUE
+    TYPE: 'laplacian'
+    STEPS: 5000
+    LR: 0.001
+    CUDA: FALSE
+    BS: 64
+    LATENT_DIM: 2
+    BOUND: 5
+    BINS: 8
+    ORDER: 'linear'
+    PATH: '/srv/data/ltcl/ckpts/da_lap.pth'
+  
+VAE:
+    GPU: [1]
+    CPU: 8
+    TRAIN_BS: 128
+    VAL_BS: 4096
+    EPOCHS: 200
+    N_VAL_SAMPLES: 4096
+    NCLASS: 5
+    LR: 0.001
+    BETA: 0.0025
+    GAMMA: 0.0075
+    SIGMA: 0.0
+    INPUT_DIM: 4
+    CONTENT_DIM: 2
+    STYLE_DIM: 2
+    ENC:
+        HIDDEN_DIM: 128
+    DEC:
+        HIDDEN_DIM: 128
+        DIST: 'gaussian'
+    PIN: TRUE
+
+MCC:
+    FREQ: 0.5
+    CORR: 'Spearman' # 'Spearman'

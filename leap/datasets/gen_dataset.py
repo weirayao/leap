@@ -1217,17 +1217,100 @@ def case2_nonstationary_causal():
             ct = ct_ns)
 
 
-if __name__ == "__main__":
-    linear_nonGaussian()
-    linear_nonGaussian_ts()
-    nonlinear_Gaussian_ts()
-    nonlinear_nonGaussian_ts()
-    nonlinear_ns()
-    nonlinear_gau_ns()
-    case1_dependency()
-    case2_nonstationary_causal()
-    nonlinear_gau_cins_sparse()
-    instan_temporal()
-    for Nclass in  [1, 5, 10, 15, 20]:
-        nonlinear_gau_cins(Nclass)
+def gen_da_data_ortho(Nsegment, varyMean=False, seed=1):
+    """
+    generate multivariate data based on the non-stationary non-linear ICA model of Hyvarinen & Morioka (2016)
+    we generate mixing matrices using random orthonormal matrices
+    INPUT
+        - Ncomp: number of components (i.e., dimensionality of the data)
+        - Nlayer: number of non-linear layers!
+        - Nsegment: number of data segments to generate
+        - NsegmentObs: number of observations per segment
+        - source: either Laplace or Gaussian, denoting distribution for latent sources
+        - NonLin: linearity employed in non-linear mixing. Can be one of "leaky" = leakyReLU or "sigmoid"=sigmoid
+          Specifically for leaky activation we also have:
+            - negSlope: slope for x < 0 in leaky ReLU
+            - Niter4condThresh: number of random matricies to generate to ensure well conditioned
+    OUTPUT:
+      - output is a dictionary with the following values:
+        - sources: original non-stationary source
+        - obs: mixed sources
+        - labels: segment labels (indicating the non stationarity in the data)
+    """
+    path = os.path.join(root_dir, "da_gau_%d"%Nsegment)
+    os.makedirs(path, exist_ok=True)
+    Ncomp = 4
+    Ncomp_s = 1
+    Nlayer = 3
+    NsegmentObs = 7500
+    negSlope = 0.2
+    NonLin = 'leaky'
+    source = 'Gaussian'
+    np.random.seed(seed)
+    # generate non-stationary data:
+    Nobs = NsegmentObs * Nsegment  # total number of observations
+    labels = np.array([0] * Nobs)  # labels for each observation (populate below)
 
+    # generate data, which we will then modulate in a non-stationary manner:
+    if source == 'Laplace':
+        dat = np.random.laplace(0, 1, (Nobs, Ncomp))
+        dat = scale(dat)  # set to zero mean and unit variance
+    elif source == 'Gaussian':
+        dat = np.random.normal(0, 1, (Nobs, Ncomp))
+        dat = scale(dat)
+    else:
+        raise Exception("wrong source distribution")
+
+    # get modulation parameters
+    modMat = np.random.uniform(0.01, 3, (Ncomp_s, Nsegment))
+
+    if varyMean:
+        meanMat = np.random.uniform(-3, 3, (Ncomp_s, Nsegment))
+    else:
+        meanMat = np.zeros((Ncomp_s, Nsegment))
+    # now we adjust the variance within each segment in a non-stationary manner
+    for seg in range(Nsegment):
+        segID = range(NsegmentObs * seg, NsegmentObs * (seg + 1))
+        dat[segID, -Ncomp_s:] = np.multiply(dat[segID, -Ncomp_s:], modMat[:, seg])
+        dat[segID, -Ncomp_s:] = np.add(dat[segID, -Ncomp_s:], meanMat[:, seg])
+        labels[segID] = seg
+
+    # now we are ready to apply the non-linear mixtures:
+    mixedDat = np.copy(dat)
+
+    # generate mixing matrices:
+    # now we apply layers of non-linearity (just one for now!). Note the order will depend on natural of nonlinearity!
+    # (either additive or more general!)
+    mixingList = []
+    for l in range(Nlayer - 1):
+        # generate causal matrix first:
+        A = ortho_group.rvs(Ncomp)  # generateUniformMat( Ncomp, condThresh )
+        mixingList.append(A)
+
+        # we first apply non-linear function, then causal matrix!
+        if NonLin == 'leaky':
+            mixedDat = leaky_ReLU(mixedDat, negSlope)
+        elif NonLin == 'sigmoid':
+            mixedDat = sigmoidAct(mixedDat)
+        # apply mixing:
+        mixedDat = np.dot(mixedDat, A)
+
+    np.savez(os.path.join(path, "data"), 
+             y = dat, 
+             x = mixedDat,
+             c = labels)
+
+if __name__ == "__main__":
+    # linear_nonGaussian()
+    # linear_nonGaussian_ts()
+    # nonlinear_Gaussian_ts()
+    # nonlinear_nonGaussian_ts()
+    # nonlinear_ns()
+    # nonlinear_gau_ns()
+    # case1_dependency()
+    # case2_nonstationary_causal()
+    # nonlinear_gau_cins_sparse()
+    # instan_temporal()
+    # for Nclass in  [1, 5, 10, 15, 20]:
+    #     nonlinear_gau_cins(Nclass)
+    gen_da_data_ortho(Nsegment=5, varyMean=True)

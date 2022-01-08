@@ -252,9 +252,9 @@ class BetaVAE_MLP(nn.Module):
                                        nn.Linear(hidden_dim, 2*z_dim)
                                     )
         # Fix the functional form to ground-truth mixing function
-        self.decoder = nn.Sequential(
+        self.decoder = nn.Sequential(  nn.Linear(z_dim, hidden_dim),
                                        nn.LeakyReLU(0.2),
-                                       nn.Linear(z_dim, hidden_dim),
+                                       nn.Linear(hidden_dim, hidden_dim),
                                        nn.LeakyReLU(0.2),
                                        nn.Linear(hidden_dim, input_dim)
                                     )

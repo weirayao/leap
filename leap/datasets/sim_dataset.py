@@ -254,3 +254,22 @@ class SimulationDatasetPCLNS(Dataset):
         x = torch.swapaxes(x, 1, 2)
         xx, yy = x[:,-1:], x[:,:-1]
         return xx, yy
+
+class DANS(Dataset):
+    def __init__(self, directory, dataset="da_10"):
+        super().__init__()
+        self.path = os.path.join(directory, dataset, "data.npz")
+        self.npz = np.load(self.path)
+        self.data = { }
+        for key in ["y", "x", "c"]:
+            self.data[key] = self.npz[key]
+
+    def __len__(self):
+        return len(self.data["y"])
+
+    def __getitem__(self, idx):
+        y = torch.from_numpy(self.data["y"][idx].astype('float32'))
+        x = torch.from_numpy(self.data["x"][idx].astype('float32'))
+        c = torch.from_numpy(self.data["c"][idx, None].astype('float32'))
+        sample = {"y": y, "x": x, "c": c}
+        return sample
