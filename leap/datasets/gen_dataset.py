@@ -1240,7 +1240,7 @@ def gen_da_data_ortho(Nsegment, varyMean=False, seed=1):
     path = os.path.join(root_dir, "da_gau_%d"%Nsegment)
     os.makedirs(path, exist_ok=True)
     Ncomp = 4
-    Ncomp_s = 1
+    Ncomp_s = 2
     Nlayer = 3
     NsegmentObs = 7500
     negSlope = 0.2

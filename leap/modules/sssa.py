@@ -48,7 +48,8 @@ class SSA(pl.LightningModule):
         self.sigma = sigma
         self.correlation = correlation
         self.decoder_dist = decoder_dist
-
+        self.fc = nn.Linear(s_dim, nclass)
+        self.ce = nn.CrossEntropyLoss()
         # Inference
         self.net = BetaVAE_MLP(input_dim=input_dim, 
                                z_dim=self.z_dim, 
@@ -134,8 +135,8 @@ class SSA(pl.LightningModule):
         # Nonstationary branch
         es = [ ]
         logabsdet = [ ]
-        for c in range(self.nclass):
-            es_c, logabsdet_c = self.spline_list[c](residuals)
+        for c_id in range(self.nclass):
+            es_c, logabsdet_c = self.spline_list[c_id](residuals)
             es.append(es_c)
             logabsdet.append(logabsdet_c)
         es = torch.stack(es, axis=1)
@@ -148,14 +149,15 @@ class SSA(pl.LightningModule):
         log_pz_style = self.base_dist.log_prob(es) + sum_log_abs_det_jacobians
         kld_style = torch.sum(log_qz_style, dim=-1) - log_pz_style
         kld_style = kld_style.mean()
-        hsic_loss = self.hsic(zs[:,:self.c_dim], zs[:,self.c_dim:])
+        # Classification branch
+        ce_loss = self.ce(self.fc(residuals), c)
         # VAE training
-        loss = recon_loss + self.beta * kld_content + self.gamma * kld_style + self.sigma * hsic_loss
+        loss = recon_loss + self.beta * kld_content + self.gamma * kld_style + self.sigma * ce_loss
         self.log("train_elbo_loss", loss)
         self.log("train_recon_loss", recon_loss)
         self.log("train_kld_content", kld_content)
         self.log("train_kld_style", kld_style)
-        self.log("train_hsic", hsic_loss)
+        self.log("train_ce", ce_loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -181,8 +183,8 @@ class SSA(pl.LightningModule):
         # Nonstationary branch
         es = [ ]
         logabsdet = [ ]
-        for c in range(self.nclass):
-            es_c, logabsdet_c = self.spline_list[c](residuals)
+        for c_id in range(self.nclass):
+            es_c, logabsdet_c = self.spline_list[c_id](residuals)
             es.append(es_c)
             logabsdet.append(logabsdet_c)
         es = torch.stack(es, axis=1)
@@ -195,11 +197,11 @@ class SSA(pl.LightningModule):
         log_pz_style = self.base_dist.log_prob(es) + sum_log_abs_det_jacobians
         kld_style = torch.sum(log_qz_style, dim=-1) - log_pz_style
         kld_style = kld_style.mean()
-        hsic_loss = self.hsic(zs[:,:self.c_dim], zs[:,self.c_dim:])
+        # Classification branch
+        ce_loss = self.ce(self.fc(residuals), c)
         # VAE training
-        loss = recon_loss + self.beta * kld_content + self.gamma * kld_style + self.sigma * hsic_loss
+        loss = recon_loss + self.beta * kld_content + self.gamma * kld_style + self.sigma * ce_loss
         # Compute Kernel Regression R^2
-
         r2 = compute_r2(mus[:,:self.c_dim], batch["y"][:,:self.c_dim])
         # Compute Mean Correlation Coefficient (MCC)
         zt_recon = mus[:,self.c_dim:].T.detach().cpu().numpy()
@@ -213,6 +215,7 @@ class SSA(pl.LightningModule):
         self.log("val_recon_loss", recon_loss)
         self.log("val_kld_content", kld_content)
         self.log("val_kld_style", kld_style)
+        self.log("val_ce", ce_loss)
 
         return loss
     

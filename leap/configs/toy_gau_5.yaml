@@ -22,14 +22,14 @@ SPLINE:
 VAE:
     GPU: [1]
     CPU: 8
-    TRAIN_BS: 128
+    TRAIN_BS: 64
     VAL_BS: 4096
     EPOCHS: 200
     N_VAL_SAMPLES: 4096
     NCLASS: 5
-    LR: 0.002
-    BETA: 0.005
-    GAMMA: 0.0075
+    LR: 0.001
+    BETA: 0.01
+    GAMMA: 0.01
     SIGMA: 0.0
     INPUT_DIM: 4
     CONTENT_DIM: 2
