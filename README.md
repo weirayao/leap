@@ -13,7 +13,7 @@ In this project, we consider both a nonparametric, nonstationary setting and a p
 <br />
 (\*: indicates equal contribution.)
 <br />
-Submitted to International Conference on Learning Representations (ICLR) 2022
+International Conference on Learning Representations (ICLR) 2022
 <br />
 [[Paper]](https://arxiv.org/abs/2110.05428)
 [[Project Page]](https://weirayao.github.io/)
