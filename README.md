@@ -16,7 +16,7 @@ In this project, we consider both a nonparametric, nonstationary setting and a p
 International Conference on Learning Representations (ICLR) 2022
 <br />
 [[Paper]](https://arxiv.org/abs/2110.05428)
-[[Project Page]](https://weirayao.github.io/)
+[[Project Page]](https://openreview.net/forum?id=RDlLMjLJXdq)
 
 ```
 @article{yao2021learning,
